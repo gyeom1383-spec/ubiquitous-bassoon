@@ -1,7 +1,5 @@
 import streamlit as st
-from google import genai
-from google.genai import types
-from google.genai import errors as genai_errors
+from openai import OpenAI
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
@@ -68,30 +66,26 @@ def get_api_keys():
     return []
 
 def ai_call(prompt: str) -> str:
-    """API 키를 순서대로 시도, 할당량 초과 시 다음 키로 자동 전환"""
+    """API 키를 순서대로 시도, 할당량 초과 시 다음 키로 자동 전환 (OpenAI 호환 엔드포인트)"""
     keys = get_api_keys()
     last_error = None
     for idx, key in enumerate(keys):
         try:
-            client = genai.Client(api_key=key)
-            resp = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
+            client = OpenAI(
+                api_key=key,
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
             )
-            return resp.text
-        except genai_errors.ClientError as e:
-            # ClientError는 status_code 무관하게 모두 다음 키로 시도
-            # (할당량 초과 외에도 키 오류 등 다양한 이유로 발생)
-            last_error = e
-            continue
+            resp = client.chat.completions.create(
+                model="gemini-2.5-flash",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1000,
+                temperature=0.3,
+                timeout=60,
+            )
+            return resp.choices[0].message.content
         except Exception as e:
-            err_msg = str(e).lower()
-            quota_keywords = [
-                "429", "quota", "exhausted", "resource_exhausted",
-                "rate limit", "ratelimit", "too many requests",
-                "limit exceeded", "capacity", "unavailable",
-            ]
-            if any(kw in err_msg for kw in quota_keywords):
+            err_msg = str(e)
+            if "429" in err_msg:
                 last_error = e
                 continue
             raise e
