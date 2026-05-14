@@ -106,27 +106,30 @@ def get_sheet():
     ).sheet1
     return sheet
 
+HEADERS = ["학번", "이름", "글쓰기 단계", "제출 내용", "피드백 내용", "제출 시각"]
+
 def log_to_sheet(student_id, name, step_name, content, feedback=""):
-    """스프레드시트에 한 행 기록 (최대 3회 재시도)"""
+    """스프레드시트에 한 행 기록 — 학번·이름이 항상 A열부터 시작"""
     import time
     for attempt in range(3):
         try:
             sheet = get_sheet()
             existing = sheet.get_all_values()
             if not existing:
-                sheet.append_row(["학번", "이름", "글쓰기 단계", "제출 내용", "피드백 내용", "제출 시각"])
+                sheet.append_row(HEADERS)
+                time.sleep(0.3)
             sheet.append_row([
-                student_id,
+                str(student_id),
                 name,
                 step_name,
                 content,
                 feedback,
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             ])
-            return  # 성공 시 종료
+            return
         except Exception as e:
             if attempt < 2:
-                time.sleep(2)  # 2초 후 재시도
+                time.sleep(2)
             else:
                 st.warning(f"기록 저장 중 오류가 발생했어요: {e}")
 
