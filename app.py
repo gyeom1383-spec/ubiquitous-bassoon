@@ -1,5 +1,10 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
+import gspread
+from google.oauth2.service_account import Credentials
+from datetime import datetime
+import json
 
 # ── 페이지 설정 ─────────────────────────────────────────────
 st.set_page_config(
@@ -7,10 +12,6 @@ st.set_page_config(
     page_icon="✍️",
     layout="centered",
 )
-
-# ── API 설정 ────────────────────────────────────────────────
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel("gemini-1.5-flash")
 
 # ── 스타일 ──────────────────────────────────────────────────
 st.markdown("""
@@ -40,9 +41,84 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ── Gemini API 키 자동 전환 ──────────────────────────────────
+def get_api_keys():
+    """secrets에서 API 키 목록을 순서대로 가져옴"""
+    keys = []
+    i = 1
+    while True:
+        key_name = f"GEMINI_API_KEY_{i}"
+        if key_name in st.secrets:
+            keys.append(st.secrets[key_name])
+            i += 1
+        else:
+            break
+    # 단일 키 방식도 호환
+    if not keys and "GEMINI_API_KEY" in st.secrets:
+        keys.append(st.secrets["GEMINI_API_KEY"])
+    return keys
+
+def ai_call(prompt: str) -> str:
+    """API 키를 순서대로 시도, 할당량 초과 시 다음 키로 자동 전환"""
+    keys = get_api_keys()
+    last_error = None
+    for idx, key in enumerate(keys):
+        try:
+            client = genai.Client(api_key=key)
+            resp = client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=prompt,
+            )
+            return resp.text
+        except Exception as e:
+            err_msg = str(e)
+            if "429" in err_msg or "quota" in err_msg.lower() or "exhausted" in err_msg.lower():
+                last_error = e
+                continue
+            raise e
+    raise Exception(f"모든 API 키의 할당량이 초과되었습니다. 잠시 후 다시 시도해 주세요.\n(마지막 오류: {last_error})")
+
+# ── Google Sheets 연결 ───────────────────────────────────────
+@st.cache_resource
+def get_sheet():
+    """Google Sheets 연결 (캐시로 재연결 최소화)"""
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive",
+    ]
+    creds_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+    client = gspread.authorize(creds)
+    sheet = client.open_by_url(
+        "https://docs.google.com/spreadsheets/d/1O-mP0-STtqsyUdCt6iHmCM8qRs88WeQMo3BgV2vrBkc/edit"
+    ).sheet1
+    return sheet
+
+def log_to_sheet(student_id, name, step_name, content, feedback=""):
+    """스프레드시트에 한 행 기록"""
+    try:
+        sheet = get_sheet()
+        # 헤더가 없으면 첫 행에 추가
+        existing = sheet.get_all_values()
+        if not existing:
+            sheet.append_row(["학번", "이름", "글쓰기 단계", "제출 내용", "피드백 내용", "제출 시각"])
+        sheet.append_row([
+            student_id,
+            name,
+            step_name,
+            content,
+            feedback,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ])
+    except Exception as e:
+        # 기록 실패해도 앱 흐름은 계속 진행
+        st.warning(f"기록 저장 중 오류가 발생했어요: {e}")
+
 # ── 세션 초기화 ─────────────────────────────────────────────
 defaults = {
-    "step": 1,
+    "step": 0,           # 0 = 학생 정보 입력
+    "student_id": "",
+    "student_name": "",
     "plan": {},
     "memo": "",
     "structure": "",
@@ -50,6 +126,7 @@ defaults = {
     "draft": "",
     "checklist": {},
     "revise_fb": "",
+    "final": "",
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -60,19 +137,43 @@ def go(step):
     st.session_state.step = step
     st.rerun()
 
-def ai_call(prompt: str) -> str:
-    resp = model.generate_content(prompt)
-    return resp.text
-
 def step_label(n, title, active):
     tag = "step-header" if active else "step-inactive"
-    st.markdown(f'<div class="{tag}">STEP {n} &nbsp;|&nbsp; {title}</div>',
+    label = f"STEP {n}  |  {title}" if n > 0 else title
+    st.markdown(f'<div class="{tag}">{label}</div>', unsafe_allow_html=True)
+
+def student_info_bar():
+    sid = st.session_state.student_id
+    name = st.session_state.student_name
+    if sid or name:
+        st.caption(f"👤 {sid}  {name}")
+
+# ══════════════════════════════════════════════════════════════
+# STEP 0 · 학생 정보 입력
+# ══════════════════════════════════════════════════════════════
+if st.session_state.step == 0:
+    st.markdown('<div class="step-header">✍️ 정서를 표현하는 글 쓰기</div>',
                 unsafe_allow_html=True)
+    st.caption("시작하기 전에 학번과 이름을 입력해 주세요.")
+
+    student_id = st.text_input("학번", placeholder="예) 10101",
+                               value=st.session_state.student_id)
+    student_name = st.text_input("이름", placeholder="예) 홍길동",
+                                 value=st.session_state.student_name)
+
+    if st.button("시작하기 →", type="primary"):
+        if not student_id.strip() or not student_name.strip():
+            st.warning("학번과 이름을 모두 입력해 주세요.")
+        else:
+            st.session_state.student_id = student_id.strip()
+            st.session_state.student_name = student_name.strip()
+            go(1)
 
 # ══════════════════════════════════════════════════════════════
 # STEP 1 · 계획하기
 # ══════════════════════════════════════════════════════════════
-if st.session_state.step == 1:
+elif st.session_state.step == 1:
+    student_info_bar()
     step_label(1, "계획하기", True)
     st.caption("글을 쓰기 전, 무엇을 어떻게 쓸지 계획해 봅시다.")
 
@@ -84,11 +185,9 @@ if st.session_state.step == 1:
                         value=st.session_state.plan.get("glam", ""),
                         placeholder="예) 엘리베이터 공사로 계단을 오르내리다 옆집 할머니를 도운 일",
                         height=80)
-
     emotion = st.text_input("② 중심 정서 (그때 가장 크게 느낀 감정)",
                             value=st.session_state.plan.get("emotion", ""),
                             placeholder="예) 처음엔 짜증스러웠지만, 도와드린 뒤 뿌듯했다")
-
     method = st.multiselect("③ 활용할 표현 방법 (하나 이상 선택)",
                             ["운율", "비유", "상징"],
                             default=st.session_state.plan.get("method", []))
@@ -98,12 +197,16 @@ if st.session_state.step == 1:
             st.warning("세 항목을 모두 입력해 주세요.")
         else:
             st.session_state.plan = {"glam": glam, "emotion": emotion, "method": method}
+            content = f"글감: {glam}\n중심 정서: {emotion}\n표현 방법: {', '.join(method)}"
+            log_to_sheet(st.session_state.student_id, st.session_state.student_name,
+                         "① 계획하기", content)
             go(2)
 
 # ══════════════════════════════════════════════════════════════
 # STEP 2 · 내용 생성하기
 # ══════════════════════════════════════════════════════════════
 elif st.session_state.step == 2:
+    student_info_bar()
     step_label(1, "계획하기", False)
     step_label(2, "내용 생성하기", True)
     st.caption("경험을 자유롭게 떠올려 메모해 봅시다. 형식은 신경 쓰지 않아도 돼요.")
@@ -130,12 +233,15 @@ elif st.session_state.step == 2:
                 st.warning("조금 더 자세히 메모해 주세요.")
             else:
                 st.session_state.memo = memo
+                log_to_sheet(st.session_state.student_id, st.session_state.student_name,
+                             "② 내용 생성하기", memo)
                 go(3)
 
 # ══════════════════════════════════════════════════════════════
 # STEP 3 · 내용 조직하기  ★ AI 개입
 # ══════════════════════════════════════════════════════════════
 elif st.session_state.step == 3:
+    student_info_bar()
     step_label(1, "계획하기", False)
     step_label(2, "내용 생성하기", False)
     step_label(3, "내용 조직하기 ✦ AI 피드백", True)
@@ -153,7 +259,6 @@ elif st.session_state.step == 3:
                               placeholder="예)\n1. 엘리베이터 공사로 계단 오르내리기 시작 — 힘들고 짜증스러운 마음\n2. 자전거에 소매가 걸려 체육복이 찢어짐 — 불길한 기분\n3. 학원 가는 길, 할머니와 마주침 — 안쓰럽지만 모른 척하고 싶은 마음\n4. 고민 끝에 짐을 들어드리기로 결심\n5. 계단을 함께 오르며 마음이 가벼워짐 — 뿌듯함",
                               height=200)
 
-    # AI 피드백 버튼
     if st.button("🤖 AI 피드백 받기", type="primary", disabled=not structure.strip()):
         with st.spinner("AI가 구성을 분석하고 있어요..."):
             prompt = f"""당신은 중학교 1학년 국어 글쓰기를 돕는 친절한 교사입니다.
@@ -183,12 +288,14 @@ elif st.session_state.step == 3:
 - 중심 정서 전달에 더 효과적인 방향 제안
 - 잘된 점도 한 문장 언급
 - 중학교 1학년 눈높이의 친절한 말투로
-
 총 150자 내외로 간결하게 작성하세요."""
+
             fb = ai_call(prompt)
             st.session_state.structure_fb = fb
+            # 구성 + 피드백 함께 기록
+            log_to_sheet(st.session_state.student_id, st.session_state.student_name,
+                         "③ 내용 조직하기", structure, fb)
 
-    # 피드백 출력
     if st.session_state.structure_fb:
         st.markdown(f'<div class="ai-box">🤖 <b>AI 피드백</b><br><br>'
                     f'{st.session_state.structure_fb.replace(chr(10), "<br>")}</div>',
@@ -210,6 +317,7 @@ elif st.session_state.step == 3:
 # STEP 4 · 초고 쓰기
 # ══════════════════════════════════════════════════════════════
 elif st.session_state.step == 4:
+    student_info_bar()
     step_label(1, "계획하기", False)
     step_label(2, "내용 생성하기", False)
     step_label(3, "내용 조직하기", False)
@@ -224,7 +332,8 @@ elif st.session_state.step == 4:
                 '<b>200자 이상 400자 이내</b>로 써보세요.</div>',
                 unsafe_allow_html=True)
 
-    title = st.text_input("제목", value="", placeholder="글의 제목을 입력하세요")
+    title = st.text_input("제목", placeholder="글의 제목을 입력하세요",
+                          value=st.session_state.plan.get("title", ""))
     draft = st.text_area("초고",
                          value=st.session_state.draft,
                          placeholder="여기에 글을 써 주세요...",
@@ -250,12 +359,16 @@ elif st.session_state.step == 4:
             else:
                 st.session_state.draft = draft
                 st.session_state.plan["title"] = title
+                content = f"제목: {title}\n\n{draft}"
+                log_to_sheet(st.session_state.student_id, st.session_state.student_name,
+                             "④ 초고 쓰기", content)
                 go(5)
 
 # ══════════════════════════════════════════════════════════════
 # STEP 5 · 고쳐쓰기  ★ AI 개입
 # ══════════════════════════════════════════════════════════════
 elif st.session_state.step == 5:
+    student_info_bar()
     step_label(1, "계획하기", False)
     step_label(2, "내용 생성하기", False)
     step_label(3, "내용 조직하기", False)
@@ -263,14 +376,11 @@ elif st.session_state.step == 5:
     step_label(5, "고쳐쓰기 ✦ AI 피드백", True)
     st.caption("내 글을 스스로 점검하고, AI의 도움을 받아 다듬어 봅시다.")
 
-    # 초고 표시
     with st.expander("📄 내 초고 보기", expanded=False):
         st.markdown(f"**{st.session_state.plan.get('title', '')}**")
         st.write(st.session_state.draft)
 
     st.divider()
-
-    # 자기 점검 체크리스트
     st.markdown("#### 📋 자기 점검 체크리스트")
     st.caption("먼저 스스로 점검해 본 뒤, AI 피드백을 받으세요.")
 
@@ -281,16 +391,14 @@ elif st.session_state.step == 5:
         "c4": "중심 정서가 글의 처음부터 끝까지 일관되게 유지된다.",
         "c5": "글의 처음과 끝이 자연스럽게 연결된다.",
     }
-
     check_results = {}
     for key, label in checks.items():
         check_results[key] = st.checkbox(label, value=st.session_state.checklist.get(key, False))
     st.session_state.checklist = check_results
 
     st.divider()
-
-    # AI 피드백
     st.markdown("#### 🤖 AI 표현·문장 점검")
+
     if st.button("AI 피드백 받기", type="primary"):
         with st.spinner("AI가 문장을 꼼꼼히 살펴보고 있어요..."):
             unchecked = [label for key, label in checks.items() if not check_results[key]]
@@ -298,7 +406,6 @@ elif st.session_state.step == 5:
                                  else f"아직 점검이 필요한 항목: {', '.join(unchecked)}")
 
             prompt = f"""당신은 중학교 1학년 국어 글쓰기를 돕는 친절한 교사입니다.
-학생이 '정서를 표현하는 글 쓰기' 수행평가 초고를 완성했습니다.
 표현과 문장 수준의 피드백만 제공해 주세요. 내용·구성은 다루지 마세요.
 
 [학생 글]
@@ -328,14 +435,20 @@ elif st.session_state.step == 5:
             fb = ai_call(prompt)
             st.session_state.revise_fb = fb
 
+            # 초고 + 체크리스트 결과 + 피드백 기록
+            checked_items = [label for key, label in checks.items() if check_results[key]]
+            content = (f"[자기 점검 완료 항목]\n" +
+                       "\n".join(f"✓ {c}" for c in checked_items) +
+                       f"\n\n[초고]\n제목: {st.session_state.plan.get('title', '')}\n{st.session_state.draft}")
+            log_to_sheet(st.session_state.student_id, st.session_state.student_name,
+                         "⑤ 고쳐쓰기", content, fb)
+
     if st.session_state.revise_fb:
         st.markdown(f'<div class="ai-box">🤖 <b>AI 피드백</b><br><br>'
                     f'{st.session_state.revise_fb.replace(chr(10), "<br>")}</div>',
                     unsafe_allow_html=True)
 
     st.divider()
-
-    # 최종 수정본 제출
     st.markdown("#### ✍️ 최종 수정본")
     final = st.text_area("AI 피드백을 반영해 글을 고쳐 쓰세요.",
                          value=st.session_state.draft,
@@ -348,6 +461,9 @@ elif st.session_state.step == 5:
     with col2:
         if st.button("✅ 최종 제출", type="primary"):
             st.session_state.final = final
+            log_to_sheet(st.session_state.student_id, st.session_state.student_name,
+                         "✅ 최종 제출",
+                         f"제목: {st.session_state.plan.get('title', '')}\n\n{final}")
             go(6)
 
 # ══════════════════════════════════════════════════════════════
@@ -368,8 +484,3 @@ elif st.session_state.step == 6:
     st.markdown(f"- 활용한 표현 방법: {', '.join(p.get('method', []))}")
     checked = sum(1 for v in st.session_state.checklist.values() if v)
     st.markdown(f"- 자기 점검: {checked}/5 항목 완료")
-
-    if st.button("처음부터 다시 쓰기"):
-        for k in list(st.session_state.keys()):
-            del st.session_state[k]
-        st.rerun()
