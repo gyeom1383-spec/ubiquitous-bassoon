@@ -1,6 +1,7 @@
 import streamlit as st
 from google import genai
 from google.genai import types
+from google.genai import errors as genai_errors
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
@@ -78,9 +79,23 @@ def ai_call(prompt: str) -> str:
                 contents=prompt,
             )
             return resp.text
+        except genai_errors.ClientError as e:
+            # ClientError는 status_code로 판단
+            err_msg = str(e).lower()
+            quota_keywords = [
+                "429", "quota", "exhausted", "resource_exhausted",
+                "rate limit", "ratelimit", "too many requests",
+                "limit exceeded", "capacity", "unavailable",
+            ]
+            is_quota = (
+                hasattr(e, "status_code") and e.status_code == 429
+            ) or any(kw in err_msg for kw in quota_keywords)
+            if is_quota:
+                last_error = e
+                continue
+            raise e
         except Exception as e:
             err_msg = str(e).lower()
-            # 새 google-genai SDK 포함 다양한 할당량 초과 오류 패턴 감지
             quota_keywords = [
                 "429", "quota", "exhausted", "resource_exhausted",
                 "rate limit", "ratelimit", "too many requests",
