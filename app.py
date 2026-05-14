@@ -250,16 +250,40 @@ elif st.session_state.step == 3:
     p = st.session_state.plan
     st.info(f"📌 중심 정서: {p['emotion']}")
 
-    st.markdown('<div class="tip-box">💡 처음(시작) → 중간(사건·변화) → 끝(결말·깨달음) '
-                '순서로 장면이나 문단을 번호 붙여 나열해 보세요.</div>',
+    st.markdown('<div class="tip-box">💡 각 문단에 <b>일어난 일</b>과 <b>그때 느낀 감정</b>을 함께 써 보세요. '
+                '처음(시작) → 중간1 → 중간2 → 중간3 → 끝(결말·깨달음) 순서로 구성해요.</div>',
                 unsafe_allow_html=True)
 
-    structure = st.text_area("장면·문단 순서 나열",
-                              value=st.session_state.structure,
-                              placeholder="예)\n1. 엘리베이터 공사로 계단 오르내리기 시작 — 힘들고 짜증스러운 마음\n2. 자전거에 소매가 걸려 체육복이 찢어짐 — 불길한 기분\n3. 학원 가는 길, 할머니와 마주침 — 안쓰럽지만 모른 척하고 싶은 마음\n4. 고민 끝에 짐을 들어드리기로 결심\n5. 계단을 함께 오르며 마음이 가벼워짐 — 뿌듯함",
-                              height=200)
+    para_labels = [
+        ("1문단", "처음 (시작 장면·상황)"),
+        ("2문단", "중간1 (사건 전개)"),
+        ("3문단", "중간2 (변화·갈등)"),
+        ("4문단", "중간3 (전환·결심)"),
+        ("5문단", "끝 (결말·깨달음)"),
+    ]
 
-    if st.button("🤖 AI 피드백 받기", type="primary", disabled=not structure.strip()):
+    # 세션에서 각 문단 불러오기
+    if "structure_paras" not in st.session_state:
+        st.session_state.structure_paras = [""] * 5
+
+    paras = []
+    for i, (num, hint) in enumerate(para_labels):
+        val = st.text_area(
+            f"**{num}** — {hint}",
+            value=st.session_state.structure_paras[i],
+            placeholder=f"예) {['엘리베이터 공사로 계단을 오르내려야 했다. 힘들고 짜증스러웠다.', '자전거 소매가 걸려 체육복이 찢어졌다. 불길한 기분이 들었다.', '학원 가는 길에 무거운 짐을 든 할머니와 마주쳤다. 안쓰러웠지만 모른 척하고 싶었다.', '고민 끝에 할머니의 짐을 들어드리기로 결심했다.', '계단을 함께 오르며 마음이 가벼워졌다. 작은 용기가 뿌듯함으로 돌아왔다.'][i]}",
+            height=90,
+            key=f"para_{i}"
+        )
+        paras.append(val)
+    st.session_state.structure_paras = paras
+
+    structure = "\n".join(
+        f"{label[0]}: {p}" for label, p in zip(para_labels, paras) if p.strip()
+    )
+    all_filled = all(p.strip() for p in paras)
+
+    if st.button("🤖 AI 피드백 받기", type="primary", disabled=not all_filled):
         with st.spinner("AI가 구성을 분석하고 있어요..."):
             prompt = f"""당신은 중학교 1학년 국어 글쓰기를 돕는 친절한 교사입니다.
 학생이 '정서를 표현하는 글 쓰기' 수행평가를 위해 글의 구성을 짰습니다.
