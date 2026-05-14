@@ -102,7 +102,7 @@ def get_sheet():
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     client = gspread.authorize(creds)
     sheet = client.open_by_url(
-        "https://docs.google.com/spreadsheets/d/1O-mP0-STtqsyUdCt6iHmCM8qRs88WeQMo3BgV2vrBkc/edit"
+        "https://docs.google.com/spreadsheets/d/1PGu2WWAtBQNaVLHUE6VP1xb0A-ZZfB1B5LugBZopJsc/edit"
     ).sheet1
     return sheet
 
