@@ -75,25 +75,15 @@ def ai_call(prompt: str) -> str:
         try:
             client = genai.Client(api_key=key)
             resp = client.models.generate_content(
-                model="gemini-1.5-flash",
+                model="gemini-2.0-flash",
                 contents=prompt,
             )
             return resp.text
         except genai_errors.ClientError as e:
-            # ClientError는 status_code로 판단
-            err_msg = str(e).lower()
-            quota_keywords = [
-                "429", "quota", "exhausted", "resource_exhausted",
-                "rate limit", "ratelimit", "too many requests",
-                "limit exceeded", "capacity", "unavailable",
-            ]
-            is_quota = (
-                hasattr(e, "status_code") and e.status_code == 429
-            ) or any(kw in err_msg for kw in quota_keywords)
-            if is_quota:
-                last_error = e
-                continue
-            raise e
+            # ClientError는 status_code 무관하게 모두 다음 키로 시도
+            # (할당량 초과 외에도 키 오류 등 다양한 이유로 발생)
+            last_error = e
+            continue
         except Exception as e:
             err_msg = str(e).lower()
             quota_keywords = [
