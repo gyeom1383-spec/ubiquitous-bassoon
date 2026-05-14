@@ -78,9 +78,10 @@ def ai_call(prompt: str) -> str:
             resp = client.chat.completions.create(
                 model="gemini-2.5-flash",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=2000,
+                max_tokens=3000,
                 temperature=0.3,
                 timeout=30,
+                stream=False,
             )
             return resp.choices[0].message.content
         except Exception as e:
