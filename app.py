@@ -78,7 +78,7 @@ def ai_call(prompt: str) -> str:
             resp = client.chat.completions.create(
                 model="gemini-2.5-flash",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=1000,
+                max_tokens=2000,
                 temperature=0.3,
                 timeout=60,
             )
