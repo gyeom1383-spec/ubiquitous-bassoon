@@ -71,8 +71,14 @@ def ai_call(prompt: str) -> str:
             )
             return resp.text
         except Exception as e:
-            err_msg = str(e)
-            if "429" in err_msg or "quota" in err_msg.lower() or "exhausted" in err_msg.lower():
+            err_msg = str(e).lower()
+            # 새 google-genai SDK 포함 다양한 할당량 초과 오류 패턴 감지
+            quota_keywords = [
+                "429", "quota", "exhausted", "resource_exhausted",
+                "rate limit", "ratelimit", "too many requests",
+                "limit exceeded", "capacity", "unavailable",
+            ]
+            if any(kw in err_msg for kw in quota_keywords):
                 last_error = e
                 continue
             raise e
