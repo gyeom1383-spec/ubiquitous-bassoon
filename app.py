@@ -43,7 +43,13 @@ st.markdown("""
 
 # ── Gemini API 키 자동 전환 ──────────────────────────────────
 def get_api_keys():
-    """secrets에서 API 키 목록을 순서대로 가져옴"""
+    """secrets에서 API 키 목록을 가져옴 (세 가지 형식 모두 호환)"""
+    # 형식 1: GEMINI_API_KEYS = ["key1", "key2", ...] (리스트)
+    if "GEMINI_API_KEYS" in st.secrets:
+        keys = list(st.secrets["GEMINI_API_KEYS"])
+        if keys:
+            return keys
+    # 형식 2: GEMINI_API_KEY_1, GEMINI_API_KEY_2, ... (개별)
     keys = []
     i = 1
     while True:
@@ -53,10 +59,12 @@ def get_api_keys():
             i += 1
         else:
             break
-    # 단일 키 방식도 호환
-    if not keys and "GEMINI_API_KEY" in st.secrets:
-        keys.append(st.secrets["GEMINI_API_KEY"])
-    return keys
+    if keys:
+        return keys
+    # 형식 3: GEMINI_API_KEY = "key" (단일)
+    if "GEMINI_API_KEY" in st.secrets:
+        return [st.secrets["GEMINI_API_KEY"]]
+    return []
 
 def ai_call(prompt: str) -> str:
     """API 키를 순서대로 시도, 할당량 초과 시 다음 키로 자동 전환"""
