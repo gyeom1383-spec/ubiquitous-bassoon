@@ -43,6 +43,11 @@ st.markdown("""
     font-size: 0.80rem; color: #1565C0;
     display: inline-block; margin-bottom: 8px;
   }
+  .warn-box {
+    background: #FFF3E0; border-left: 4px solid #F57C00;
+    padding: 10px 14px; border-radius: 4px;
+    font-size: 0.92rem; margin-bottom: 10px;
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -66,7 +71,6 @@ def get_api_keys():
     return keys
 
 def ai_call(prompt: str):
-    """API 키를 순서대로 시도, 성공 시 (응답 텍스트, 사용된 키 번호, 전체 키 수) 반환"""
     keys = get_api_keys()
     last_error = None
     for idx, key in enumerate(keys):
@@ -129,7 +133,7 @@ def log_to_sheet(student_id, name, step_name, content, feedback=""):
 
 # ── 세션 초기화 ─────────────────────────────────────────────
 defaults = {
-    "page": "login",        # login → menu → step1~5
+    "page": "login",
     "student_id": "",
     "student_name": "",
     "plan": {},
@@ -139,9 +143,9 @@ defaults = {
     "structure_fb": "",
     "draft": "",
     "checklist": {},
-    "expr_inputs": {},      # 표현 방법별 학생 입력
+    "expr_inputs": {},
     "revise_fb": "",
-    "api_used": None,       # (사용된 키 번호, 전체 키 수)
+    "api_used": None,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -446,6 +450,20 @@ elif st.session_state.page == "step5":
     plan = st.session_state.plan
     methods = plan.get("method", [])
 
+    # ── STEP 1 미완료 경고 + 표현 방법 직접 선택 허용 ──────────
+    if not methods:
+        st.markdown('<div class="warn-box">⚠️ STEP 1(계획하기)에서 표현 방법을 선택하지 않았습니다. '
+                    '아래에서 직접 선택하거나, 먼저 STEP 1을 완료해 주세요.</div>',
+                    unsafe_allow_html=True)
+        methods = st.multiselect(
+            "활용한 표현 방법을 선택하세요",
+            ["운율", "비유", "상징"],
+            key="step5_methods_fallback"
+        )
+        # 선택한 값을 plan에 임시 반영
+        if methods:
+            st.session_state.plan["method"] = methods
+
     with st.expander("📄 내 초고 보기", expanded=False):
         st.markdown(f"**{plan.get('title', '')}**")
         st.write(st.session_state.draft)
@@ -474,79 +492,102 @@ elif st.session_state.page == "step5":
     st.markdown("#### ✏️ 활용한 표현 방법 입력")
     st.caption("초고에서 해당 표현 방법을 활용한 부분을 직접 입력하세요.")
 
-    expr_inputs = st.session_state.expr_inputs
+    if not methods:
+        st.info("위에서 표현 방법을 먼저 선택해야 이 섹션이 표시됩니다.")
+    else:
+        expr_inputs = st.session_state.expr_inputs
 
-    if "운율" in methods:
-        st.markdown("**운율**")
-        st.markdown('<div class="tip-box">💡 운율: 글에서 소리나 리듬이 반복되는 부분입니다. '
-                    '비슷한 어미, 음절 수, 반복되는 표현 등을 찾아보세요.</div>',
-                    unsafe_allow_html=True)
-        expr_inputs["운율"] = st.text_area(
-            "운율이 나타난 부분을 초고에서 찾아 그대로 입력하세요.",
-            value=expr_inputs.get("운율", ""),
-            height=80, key="expr_운율"
-        )
-
-    if "비유" in methods:
-        st.markdown("**비유**")
-        st.markdown('<div class="tip-box">💡 비유: <b>구체적인 대상(원관념)</b>을 '
-                    '<b>다른 구체적인 대상(보조 관념)</b>에 빗대어 표현하는 방법입니다. '
-                    '(예: "다리가 납덩이처럼 무거웠다" → 원관념: 다리, 보조 관념: 납덩이)</div>',
-                    unsafe_allow_html=True)
-        expr_inputs["비유_문장"] = st.text_area(
-            "비유가 사용된 문장을 초고에서 찾아 그대로 입력하세요.",
-            value=expr_inputs.get("비유_문장", ""),
-            height=80, key="expr_비유_문장"
-        )
-        col_a, col_b = st.columns(2)
-        with col_a:
-            expr_inputs["비유_원관념"] = st.text_input(
-                "원관념 (실제로 표현하려는 구체적 대상)",
-                value=expr_inputs.get("비유_원관념", ""),
-                key="expr_비유_원"
-            )
-        with col_b:
-            expr_inputs["비유_보조관념"] = st.text_input(
-                "보조 관념 (빗댄 구체적 대상)",
-                value=expr_inputs.get("비유_보조관념", ""),
-                key="expr_비유_보조"
+        if "운율" in methods:
+            st.markdown("**운율**")
+            st.markdown('<div class="tip-box">💡 운율: 글에서 소리나 리듬이 반복되는 부분입니다. '
+                        '비슷한 어미, 음절 수, 반복되는 표현 등을 찾아보세요.</div>',
+                        unsafe_allow_html=True)
+            expr_inputs["운율"] = st.text_area(
+                "운율이 나타난 부분을 초고에서 찾아 그대로 입력하세요.",
+                value=expr_inputs.get("운율", ""),
+                height=80, key="expr_운율"
             )
 
-    if "상징" in methods:
-        st.markdown("**상징**")
-        st.markdown('<div class="tip-box">💡 상징: <b>추상적인 개념(원관념)</b>을 '
-                    '<b>구체적인 대상(보조 관념)</b>으로 나타내는 방법입니다. '
-                    '(예: "176개의 계단이 선물처럼 느껴졌다" → 원관념: 힘든 상황·성장, 보조 관념: 계단)</div>',
-                    unsafe_allow_html=True)
-        expr_inputs["상징_문장"] = st.text_area(
-            "상징이 사용된 문장을 초고에서 찾아 그대로 입력하세요.",
-            value=expr_inputs.get("상징_문장", ""),
-            height=80, key="expr_상징_문장"
-        )
-        col_a, col_b = st.columns(2)
-        with col_a:
-            expr_inputs["상징_원관념"] = st.text_input(
-                "원관념 (상징하려는 추상적 개념)",
-                value=expr_inputs.get("상징_원관념", ""),
-                key="expr_상징_원"
+        if "비유" in methods:
+            st.markdown("**비유**")
+            st.markdown('<div class="tip-box">💡 비유: <b>구체적인 대상(원관념)</b>을 '
+                        '<b>다른 구체적인 대상(보조 관념)</b>에 빗대어 표현하는 방법입니다. '
+                        '(예: "다리가 납덩이처럼 무거웠다" → 원관념: 다리, 보조 관념: 납덩이)</div>',
+                        unsafe_allow_html=True)
+            expr_inputs["비유_문장"] = st.text_area(
+                "비유가 사용된 문장을 초고에서 찾아 그대로 입력하세요.",
+                value=expr_inputs.get("비유_문장", ""),
+                height=80, key="expr_비유_문장"
             )
-        with col_b:
-            expr_inputs["상징_보조관념"] = st.text_input(
-                "보조 관념 (상징하는 구체적 대상)",
-                value=expr_inputs.get("상징_보조관념", ""),
-                key="expr_상징_보조"
-            )
+            col_a, col_b = st.columns(2)
+            with col_a:
+                expr_inputs["비유_원관념"] = st.text_input(
+                    "원관념 (실제로 표현하려는 구체적 대상)",
+                    value=expr_inputs.get("비유_원관념", ""),
+                    key="expr_비유_원"
+                )
+            with col_b:
+                expr_inputs["비유_보조관념"] = st.text_input(
+                    "보조 관념 (빗댄 구체적 대상)",
+                    value=expr_inputs.get("비유_보조관념", ""),
+                    key="expr_비유_보조"
+                )
 
-    st.session_state.expr_inputs = expr_inputs
+        if "상징" in methods:
+            st.markdown("**상징**")
+            st.markdown('<div class="tip-box">💡 상징: <b>추상적인 개념(원관념)</b>을 '
+                        '<b>구체적인 대상(보조 관념)</b>으로 나타내는 방법입니다. '
+                        '(예: "176개의 계단이 선물처럼 느껴졌다" → 원관념: 힘든 상황·성장, 보조 관념: 계단)</div>',
+                        unsafe_allow_html=True)
+            expr_inputs["상징_문장"] = st.text_area(
+                "상징이 사용된 문장을 초고에서 찾아 그대로 입력하세요.",
+                value=expr_inputs.get("상징_문장", ""),
+                height=80, key="expr_상징_문장"
+            )
+            col_a, col_b = st.columns(2)
+            with col_a:
+                expr_inputs["상징_원관념"] = st.text_input(
+                    "원관념 (상징하려는 추상적 개념)",
+                    value=expr_inputs.get("상징_원관념", ""),
+                    key="expr_상징_원"
+                )
+            with col_b:
+                expr_inputs["상징_보조관념"] = st.text_input(
+                    "보조 관념 (상징하는 구체적 대상)",
+                    value=expr_inputs.get("상징_보조관념", ""),
+                    key="expr_상징_보조"
+                )
+
+        st.session_state.expr_inputs = expr_inputs
 
     st.divider()
 
     # ── AI 피드백 ─────────────────────────────────────────
     st.markdown("#### 🤖 AI 표현 방법 점검")
 
+    # 표현 방법 입력 여부 확인 (AI 버튼 활성화 조건)
+    def check_expr_filled(methods, expr_inputs):
+        """표현 방법별로 최소한의 입력이 있는지 확인"""
+        if not methods:
+            return False
+        for m in methods:
+            if m == "운율" and not expr_inputs.get("운율", "").strip():
+                return False
+            if m == "비유" and not expr_inputs.get("비유_문장", "").strip():
+                return False
+            if m == "상징" and not expr_inputs.get("상징_문장", "").strip():
+                return False
+        return True
+
+    expr_filled = check_expr_filled(methods, st.session_state.expr_inputs)
+
+    if not expr_filled and methods:
+        st.caption("⬆️ 위의 표현 방법 입력을 완료해야 AI 피드백을 받을 수 있습니다.")
+
     api_badge()
-    if st.button("AI 피드백 받기", type="primary"):
+    if st.button("AI 피드백 받기", type="primary", disabled=(not expr_filled)):
         with st.spinner("AI가 표현 방법을 분석하고 있습니다..."):
+            expr_inputs = st.session_state.expr_inputs
 
             # 표현 방법 입력 정리
             expr_summary = []
