@@ -240,12 +240,12 @@ elif st.session_state.page == "step1":
                             ["운율", "비유", "상징"],
                             default=st.session_state.plan.get("method", []))
 
-    col1, col2 = st.columns([1, 4])
+    col1, col2, col3 = st.columns([1, 3, 1])
     with col1:
         if st.button("← 메뉴"):
             go("menu")
-    with col2:
-        if st.button("저장하기 ✓", type="primary"):
+    with col3:
+        if st.button("저장하기 ✓", type="primary", use_container_width=True):
             if not glam.strip() or not emotion.strip() or not method:
                 st.warning("세 항목을 모두 입력해 주세요.")
             else:
@@ -276,12 +276,12 @@ elif st.session_state.page == "step2":
                         placeholder="예)\n- 176개 계단, 숨이 턱까지 차오름\n- 할머니 흰 머리카락, 힘겨운 한숨 소리\n- 돕고 싶은데 학원 늦을까봐 망설임",
                         height=220)
 
-    col1, col2 = st.columns([1, 4])
+    col1, col2, col3 = st.columns([1, 3, 1])
     with col1:
         if st.button("← 메뉴"):
             go("menu")
-    with col2:
-        if st.button("저장하기 ✓", type="primary"):
+    with col3:
+        if st.button("저장하기 ✓", type="primary", use_container_width=True):
             if len(memo.strip()) < 20:
                 st.warning("조금 더 자세히 메모해 주세요.")
             else:
@@ -417,12 +417,12 @@ elif st.session_state.page == "step4":
     elif char_count > 400:
         st.warning(f"400자 이내로 줄여주세요. (현재 {char_count}자)")
 
-    col1, col2 = st.columns([1, 4])
+    col1, col2, col3 = st.columns([1, 3, 1])
     with col1:
         if st.button("← 메뉴"):
             go("menu")
-    with col2:
-        if st.button("저장하기 ✓", type="primary"):
+    with col3:
+        if st.button("저장하기 ✓", type="primary", use_container_width=True):
             if char_count < 200:
                 st.warning("200자 이상 써야 저장할 수 있습니다.")
             elif not title.strip():
