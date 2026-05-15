@@ -524,7 +524,7 @@ elif st.session_state.page == "step3":
 elif st.session_state.page == "step4":
     student_bar()
     step_label(4, "초고 쓰기", True)
-    st.caption("조직한 내용을 바탕으로 글을 써 봅시다.")
+    st.caption("조직한 내용을 바탕으로 공책에 초고를 작성해 봅시다.")
 
     p = st.session_state.plan
     if p.get("emotion"):
@@ -535,37 +535,26 @@ elif st.session_state.page == "step4":
                 '<b>200자 이상 400자 이내</b>로 써 보세요.</div>',
                 unsafe_allow_html=True)
 
-    title = st.text_input("제목", placeholder="글의 제목을 입력하세요",
-                          value=st.session_state.plan.get("title", ""))
-    draft = st.text_area("초고",
-                         value=st.session_state.draft,
-                         placeholder="여기에 글을 써 주세요...",
-                         height=320)
+    st.markdown("""
+**초고를 쓸 때 확인하세요:**
+- 계획하기에서 정한 **글감**과 **중심 정서**가 잘 드러나고 있나요?
+- **운율 · 비유 · 상징** 세 가지 표현 방법을 모두 활용하고 있나요?
+- 내용 조직하기에서 정한 **문단 순서**대로 전개되고 있나요?
+""")
 
-    char_count = len(draft.replace(" ", "").replace("\n", ""))
-    st.caption(f"현재 글자 수 (공백·줄바꿈 제외): {char_count}자")
-    if char_count > 0 and char_count < 200:
-        st.warning(f"200자 이상 써주세요. (현재 {char_count}자)")
-    elif char_count > 400:
-        st.warning(f"400자 이내로 줄여주세요. (현재 {char_count}자)")
+    st.markdown('<div class="tip-box">✏️ 초고는 공책에 직접 작성합니다. '
+                '작성이 완료되면 아래 버튼을 눌러 다음 단계로 넘어가세요.</div>',
+                unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([1, 3, 1])
     with col1:
         if st.button("← 메뉴"):
             go("menu")
     with col3:
-        if st.button("저장하기 ✓", type="primary", use_container_width=True):
-            if char_count < 200:
-                st.warning("200자 이상 써야 저장할 수 있습니다.")
-            elif not title.strip():
-                st.warning("제목을 입력해 주세요.")
-            else:
-                st.session_state.draft = draft
-                st.session_state.plan["title"] = title
-                content = f"제목: {title}\n\n{draft}"
-                log_to_sheet(st.session_state.student_id, st.session_state.student_name,
-                             "④ 초고 쓰기", content)
-                st.success("저장되었습니다! 메뉴로 돌아가 다음 단계를 선택하세요.")
+        if st.button("초고 완료 → 고쳐쓰기로", type="primary", use_container_width=True):
+            log_to_sheet(st.session_state.student_id, st.session_state.student_name,
+                         "④ 초고 쓰기", "초고 작성 완료 (공책 작성)")
+            go("step5")
 
 # ══════════════════════════════════════════════════════════════
 # PAGE: STEP 5 · 고쳐쓰기  ★ AI 개입 (표현 방법 중심)
@@ -583,24 +572,6 @@ elif st.session_state.page == "step5":
 
     st.divider()
 
-    # ── 자기 점검 체크리스트 ──────────────────────────────
-    st.markdown("#### 📋 자기 점검 체크리스트")
-    st.caption("먼저 스스로 점검한 뒤, AI 피드백을 받으세요.")
-
-    checks = {
-        "c1": "특정 경험이나 장면이 구체적으로 드러나 있다.",
-        "c2": "막연한 감정어 대신 상황과 연결된 감정을 표현하였다.",
-        "c3": "운율·비유·상징을 의도적으로 활용하였다.",
-        "c4": "중심 정서가 글의 처음부터 끝까지 일관되게 유지된다.",
-        "c5": "글의 처음과 끝이 자연스럽게 연결된다.",
-    }
-    check_results = {}
-    for key, label in checks.items():
-        check_results[key] = st.checkbox(label, value=st.session_state.checklist.get(key, False))
-    st.session_state.checklist = check_results
-
-    st.divider()
-
     # ── 표현 방법별 입력 (운율·비유·상징 항상 표시) ───────────
     st.markdown("#### ✏️ 활용한 표현 방법 입력")
     st.caption("초고에서 해당 표현 방법을 활용한 부분을 직접 입력하세요.")
@@ -609,9 +580,13 @@ elif st.session_state.page == "step5":
 
     # 운율
     st.markdown("**① 운율**")
-    st.markdown('<div class="tip-box">💡 운율: 글에서 소리나 리듬이 반복되는 부분입니다. '
-                '비슷한 어미, 음절 수, 반복되는 표현 등을 찾아보세요.</div>',
-                unsafe_allow_html=True)
+    st.markdown(
+        '<div class="tip-box">'
+        '💡 운율: 글에서 소리나 리듬이 반복되는 부분입니다. 비슷한 어미, 음절 수, 반복되는 표현 등을 찾아보세요.<br><br>'
+        '(예: "걸었다, 올랐다, 멈췄다" → 같은 어미 <b>~었다</b>가 반복되어 리듬감이 생김)'
+        '</div>',
+        unsafe_allow_html=True
+    )
     expr_inputs["운율"] = st.text_area(
         "운율이 나타난 부분을 초고에서 찾아 그대로 입력하세요.",
         value=expr_inputs.get("운율", ""),
@@ -620,10 +595,14 @@ elif st.session_state.page == "step5":
 
     # 비유
     st.markdown("**② 비유**")
-    st.markdown('<div class="tip-box">💡 비유: <b>구체적인 대상(원관념)</b>을 '
-                '<b>다른 구체적인 대상(보조 관념)</b>에 빗대어 표현하는 방법입니다. '
-                '(예: "다리가 납덩이처럼 무거웠다" → 원관념: 다리, 보조 관념: 납덩이)</div>',
-                unsafe_allow_html=True)
+    st.markdown(
+        '<div class="tip-box">'
+        '💡 비유: <b>구체적인 대상(원관념)</b>을 <b>다른 구체적인 대상(보조 관념)</b>에 빗대어 표현하는 방법입니다.<br><br>'
+        '(예: "다리가 납덩이처럼 무거웠다"<br>'
+        '→ 원관념: 다리 / 보조 관념: 납덩이)'
+        '</div>',
+        unsafe_allow_html=True
+    )
     expr_inputs["비유_문장"] = st.text_area(
         "비유가 사용된 문장을 초고에서 찾아 그대로 입력하세요.",
         value=expr_inputs.get("비유_문장", ""),
@@ -645,10 +624,14 @@ elif st.session_state.page == "step5":
 
     # 상징
     st.markdown("**③ 상징**")
-    st.markdown('<div class="tip-box">💡 상징: <b>추상적인 개념(원관념)</b>을 '
-                '<b>구체적인 대상(보조 관념)</b>으로 나타내는 방법입니다. '
-                '(예: "176개의 계단이 선물처럼 느껴졌다" → 원관념: 힘든 상황·성장, 보조 관념: 계단)</div>',
-                unsafe_allow_html=True)
+    st.markdown(
+        '<div class="tip-box">'
+        '💡 상징: <b>추상적인 개념(원관념)</b>을 <b>구체적인 대상(보조 관념)</b>으로 나타내는 방법입니다.<br><br>'
+        '(예: "비둘기가 날아올랐다"에서 비둘기가 평화를 나타낼 때<br>'
+        '→ 원관념: 평화 / 보조 관념: 비둘기)'
+        '</div>',
+        unsafe_allow_html=True
+    )
     expr_inputs["상징_문장"] = st.text_area(
         "상징이 사용된 문장을 초고에서 찾아 그대로 입력하세요.",
         value=expr_inputs.get("상징_문장", ""),
@@ -669,6 +652,24 @@ elif st.session_state.page == "step5":
         )
 
     st.session_state.expr_inputs = expr_inputs
+
+    st.divider()
+
+    # ── 자기 점검 체크리스트 ──────────────────────────────
+    st.markdown("#### 📋 자기 점검 체크리스트")
+    st.caption("표현 방법 입력 후 스스로 점검하고, AI 피드백을 받으세요.")
+
+    checks = {
+        "c1": "특정 경험이나 장면이 구체적으로 드러나 있다.",
+        "c2": "막연한 감정어 대신 상황과 연결된 감정을 표현하였다.",
+        "c3": "운율·비유·상징을 의도적으로 활용하였다.",
+        "c4": "중심 정서가 글의 처음부터 끝까지 일관되게 유지된다.",
+        "c5": "글의 처음과 끝이 자연스럽게 연결된다.",
+    }
+    check_results = {}
+    for key, label in checks.items():
+        check_results[key] = st.checkbox(label, value=st.session_state.checklist.get(key, False))
+    st.session_state.checklist = check_results
 
     st.divider()
 
