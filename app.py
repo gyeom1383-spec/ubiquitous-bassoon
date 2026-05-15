@@ -12,6 +12,9 @@ st.set_page_config(
     layout="centered",
 )
 
+# 표현 방법은 항상 세 가지 고정
+ALL_METHODS = ["운율", "비유", "상징"]
+
 # ── 스타일 ──────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -43,8 +46,8 @@ st.markdown("""
     font-size: 0.80rem; color: #1565C0;
     display: inline-block; margin-bottom: 8px;
   }
-  .warn-box {
-    background: #FFF3E0; border-left: 4px solid #F57C00;
+  .restore-box {
+    background: #E8F5E9; border-left: 4px solid #2E7D32;
     padding: 10px 14px; border-radius: 4px;
     font-size: 0.92rem; margin-bottom: 10px;
   }
@@ -88,12 +91,11 @@ def ai_call(prompt: str):
             )
             return resp.choices[0].message.content, idx + 1, len(keys)
         except Exception as e:
-            err_msg = str(e)
-            if "429" in err_msg:
+            if "429" in str(e):
                 last_error = e
                 continue
             raise e
-    raise Exception(f"모든 API 키의 할당량이 초과되었습니다. 잠시 후 다시 시도해 주세요.\n(마지막 오류: {last_error})")
+    raise Exception(f"모든 API 키의 할당량이 초과되었습니다.\n(마지막 오류: {last_error})")
 
 # ── Google Sheets 연결 ───────────────────────────────────────
 @st.cache_resource
@@ -110,6 +112,15 @@ def get_sheet():
     ).sheet1
 
 HEADERS = ["학번", "이름", "글쓰기 단계", "제출 내용", "피드백 내용", "제출 시각"]
+
+# 단계 레이블 → 세션 키 매핑 (복원용)
+STEP_LABELS = {
+    "① 계획하기":    "plan_raw",
+    "② 내용 생성하기": "memo",
+    "③ 내용 조직하기": "structure",
+    "④ 초고 쓰기":   "draft_raw",
+    "⑤ 고쳐쓰기":   "revise_raw",
+}
 
 def log_to_sheet(student_id, name, step_name, content, feedback=""):
     import time
@@ -131,12 +142,96 @@ def log_to_sheet(student_id, name, step_name, content, feedback=""):
             else:
                 st.warning(f"기록 저장 중 오류가 발생했어요: {e}")
 
+def load_student_data(student_id: str, name: str) -> dict:
+    """
+    시트에서 해당 학번+이름의 가장 최신 기록을 단계별로 읽어
+    복원할 데이터 딕셔너리를 반환합니다.
+    없으면 빈 딕셔너리를 반환합니다.
+    """
+    try:
+        sheet = get_sheet()
+        rows = sheet.get_all_values()
+        if not rows or len(rows) < 2:
+            return {}
+
+        # 헤더 행 제외, 해당 학번+이름 행만 필터
+        matched = [
+            r for r in rows[1:]
+            if len(r) >= 4 and str(r[0]).strip() == str(student_id).strip()
+            and r[1].strip() == name.strip()
+        ]
+        if not matched:
+            return {}
+
+        # 단계별 가장 마지막 행을 dict로 구성
+        # columns: 학번(0) 이름(1) 단계(2) 내용(3) 피드백(4) 시각(5)
+        latest = {}
+        for row in matched:
+            step = row[2].strip()
+            latest[step] = {"content": row[3], "feedback": row[4] if len(row) > 4 else ""}
+
+        return latest
+    except Exception:
+        return {}
+
+def restore_session(saved: dict):
+    """시트에서 읽은 데이터를 세션 상태에 복원합니다."""
+    if not saved:
+        return
+
+    # ① 계획하기 복원
+    if "① 계획하기" in saved:
+        raw = saved["① 계획하기"]["content"]
+        # 저장 형식: "글감: ...\n중심 정서: ...\n표현 방법: ..."
+        plan = {}
+        for line in raw.split("\n"):
+            if line.startswith("글감:"):
+                plan["glam"] = line.replace("글감:", "").strip()
+            elif line.startswith("중심 정서:"):
+                plan["emotion"] = line.replace("중심 정서:", "").strip()
+            # 표현 방법은 이제 고정이므로 저장 불필요하지만 하위 호환을 위해 유지
+        plan["method"] = ALL_METHODS
+        st.session_state.plan = plan
+
+    # ② 내용 생성하기 복원
+    if "② 내용 생성하기" in saved:
+        st.session_state.memo = saved["② 내용 생성하기"]["content"]
+
+    # ③ 내용 조직하기 복원
+    if "③ 내용 조직하기" in saved:
+        raw = saved["③ 내용 조직하기"]["content"]
+        st.session_state.structure = raw
+        st.session_state.structure_fb = saved["③ 내용 조직하기"]["feedback"]
+        # 문단 복원 시도
+        paras = [""] * 5
+        labels = ["1문단", "2문단", "3문단", "4문단", "5문단"]
+        for line in raw.split("\n"):
+            for i, lbl in enumerate(labels):
+                if line.startswith(lbl + ":"):
+                    paras[i] = line[len(lbl)+1:].strip()
+        st.session_state.structure_paras = paras
+
+    # ④ 초고 쓰기 복원
+    if "④ 초고 쓰기" in saved:
+        raw = saved["④ 초고 쓰기"]["content"]
+        lines = raw.split("\n")
+        if lines and lines[0].startswith("제목:"):
+            title = lines[0].replace("제목:", "").strip()
+            st.session_state.plan["title"] = title
+            st.session_state.draft = "\n".join(lines[2:]).strip()
+        else:
+            st.session_state.draft = raw
+
+    # ⑤ 고쳐쓰기 복원 (피드백만)
+    if "⑤ 고쳐쓰기" in saved:
+        st.session_state.revise_fb = saved["⑤ 고쳐쓰기"]["feedback"]
+
 # ── 세션 초기화 ─────────────────────────────────────────────
 defaults = {
     "page": "login",
     "student_id": "",
     "student_name": "",
-    "plan": {},
+    "plan": {"method": ALL_METHODS},
     "memo": "",
     "structure_paras": [""] * 5,
     "structure": "",
@@ -146,6 +241,7 @@ defaults = {
     "expr_inputs": {},
     "revise_fb": "",
     "api_used": None,
+    "restored": False,   # 복원 완료 여부 플래그
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -192,8 +288,29 @@ if st.session_state.page == "login":
         if not student_id.strip() or not student_name.strip():
             st.warning("학번과 이름을 모두 입력해 주세요.")
         else:
-            st.session_state.student_id   = student_id.strip()
-            st.session_state.student_name = student_name.strip()
+            sid = student_id.strip()
+            sname = student_name.strip()
+            st.session_state.student_id   = sid
+            st.session_state.student_name = sname
+
+            # ── 이전 기록 불러오기 ──────────────────────────
+            with st.spinner("이전 기록을 확인하는 중..."):
+                saved = load_student_data(sid, sname)
+
+            if saved:
+                restore_session(saved)
+                st.session_state.restored = True
+                completed_steps = list(saved.keys())
+                st.session_state.restore_msg = (
+                    f"이전 기록을 불러왔습니다. "
+                    f"완료된 단계: {', '.join(completed_steps)}"
+                )
+            else:
+                st.session_state.restored = False
+                st.session_state.restore_msg = ""
+                # 새 학생 — plan에 method 기본값 설정
+                st.session_state.plan = {"method": ALL_METHODS}
+
             go("menu")
 
 # ══════════════════════════════════════════════════════════════
@@ -203,6 +320,14 @@ elif st.session_state.page == "menu":
     student_bar()
     st.markdown('<div class="step-header">✍️ 글쓰기 단계 선택</div>',
                 unsafe_allow_html=True)
+
+    # 복원 알림
+    if st.session_state.get("restore_msg"):
+        st.markdown(
+            f'<div class="restore-box">📂 {st.session_state.restore_msg}</div>',
+            unsafe_allow_html=True
+        )
+
     st.caption("진행할 단계를 선택하세요.")
     st.markdown("")
 
@@ -240,9 +365,8 @@ elif st.session_state.page == "step1":
     emotion = st.text_input("② 중심 정서 (그때 가장 크게 느낀 감정)",
                             value=st.session_state.plan.get("emotion", ""),
                             placeholder="예) 처음엔 짜증스러웠지만, 도와드린 뒤 뿌듯했다")
-    method = st.multiselect("③ 활용할 표현 방법 (하나 이상 선택)",
-                            ["운율", "비유", "상징"],
-                            default=st.session_state.plan.get("method", []))
+
+    st.info("📌 활용할 표현 방법: **운율 · 비유 · 상징** (세 가지 모두 활용합니다)")
 
     col1, col2, col3 = st.columns([1, 3, 1])
     with col1:
@@ -250,11 +374,15 @@ elif st.session_state.page == "step1":
             go("menu")
     with col3:
         if st.button("저장하기 ✓", type="primary", use_container_width=True):
-            if not glam.strip() or not emotion.strip() or not method:
-                st.warning("세 항목을 모두 입력해 주세요.")
+            if not glam.strip() or not emotion.strip():
+                st.warning("두 항목을 모두 입력해 주세요.")
             else:
-                st.session_state.plan = {"glam": glam, "emotion": emotion, "method": method}
-                content = f"글감: {glam}\n중심 정서: {emotion}\n표현 방법: {', '.join(method)}"
+                st.session_state.plan = {
+                    "glam": glam,
+                    "emotion": emotion,
+                    "method": ALL_METHODS,
+                }
+                content = f"글감: {glam}\n중심 정서: {emotion}\n표현 방법: {', '.join(ALL_METHODS)}"
                 log_to_sheet(st.session_state.student_id, st.session_state.student_name,
                              "① 계획하기", content)
                 st.success("저장되었습니다! 메뉴로 돌아가 다음 단계를 선택하세요.")
@@ -268,8 +396,8 @@ elif st.session_state.page == "step2":
     st.caption("경험을 자유롭게 떠올려 메모해 봅시다. 형식은 신경 쓰지 않아도 됩니다.")
 
     p = st.session_state.plan
-    if p:
-        st.info(f"📌 글감: {p.get('glam','')}  |  중심 정서: {p.get('emotion','')}  |  표현 방법: {', '.join(p.get('method',[]))}")
+    if p.get("glam"):
+        st.info(f"📌 글감: {p.get('glam','')}  |  중심 정서: {p.get('emotion','')}")
 
     st.markdown('<div class="tip-box">💡 생각나는 장면, 대화, 감정, 색깔, 소리 등 '
                 '떠오르는 것을 모두 적어보세요. 양이 많을수록 좋습니다.</div>',
@@ -303,7 +431,7 @@ elif st.session_state.page == "step3":
     st.caption("메모한 내용을 글의 순서대로 정리해 봅시다.")
 
     p = st.session_state.plan
-    if p:
+    if p.get("emotion"):
         st.info(f"📌 중심 정서: {p.get('emotion','')}")
 
     st.markdown('<div class="tip-box">💡 각 문단에 <b>일어난 일</b>과 <b>그때 느낀 감정</b>을 함께 써 보세요. '
@@ -346,7 +474,7 @@ elif st.session_state.page == "step3":
 [학생 정보]
 - 글감: {plan.get('glam','')}
 - 중심 정서: {plan.get('emotion','')}
-- 활용할 표현 방법: {', '.join(plan.get('method',[]))}
+- 활용할 표현 방법: 운율, 비유, 상징
 - 자유 메모: {st.session_state.memo}
 
 [학생이 작성한 글의 구성]
@@ -399,8 +527,8 @@ elif st.session_state.page == "step4":
     st.caption("조직한 내용을 바탕으로 글을 써 봅시다.")
 
     p = st.session_state.plan
-    if p:
-        st.info(f"📌 중심 정서: {p.get('emotion','')}  |  표현 방법: {', '.join(p.get('method',[]))}")
+    if p.get("emotion"):
+        st.info(f"📌 중심 정서: {p.get('emotion','')}  |  표현 방법: 운율 · 비유 · 상징")
 
     st.markdown('<div class="tip-box">💡 맞춤법이나 문장이 완벽하지 않아도 됩니다. '
                 '지금은 내 생각과 감정을 글로 꺼내는 것이 가장 중요합니다. '
@@ -448,21 +576,6 @@ elif st.session_state.page == "step5":
     st.caption("초고에서 활용한 표현 방법을 점검하고, AI 피드백을 받아 봅시다.")
 
     plan = st.session_state.plan
-    methods = plan.get("method", [])
-
-    # ── STEP 1 미완료 경고 + 표현 방법 직접 선택 허용 ──────────
-    if not methods:
-        st.markdown('<div class="warn-box">⚠️ STEP 1(계획하기)에서 표현 방법을 선택하지 않았습니다. '
-                    '아래에서 직접 선택하거나, 먼저 STEP 1을 완료해 주세요.</div>',
-                    unsafe_allow_html=True)
-        methods = st.multiselect(
-            "활용한 표현 방법을 선택하세요",
-            ["운율", "비유", "상징"],
-            key="step5_methods_fallback"
-        )
-        # 선택한 값을 plan에 임시 반영
-        if methods:
-            st.session_state.plan["method"] = methods
 
     with st.expander("📄 내 초고 보기", expanded=False):
         st.markdown(f"**{plan.get('title', '')}**")
@@ -477,7 +590,7 @@ elif st.session_state.page == "step5":
     checks = {
         "c1": "특정 경험이나 장면이 구체적으로 드러나 있다.",
         "c2": "막연한 감정어 대신 상황과 연결된 감정을 표현하였다.",
-        "c3": "운율·비유·상징 중 하나 이상을 의도적으로 활용하였다.",
+        "c3": "운율·비유·상징을 의도적으로 활용하였다.",
         "c4": "중심 정서가 글의 처음부터 끝까지 일관되게 유지된다.",
         "c5": "글의 처음과 끝이 자연스럽게 연결된다.",
     }
@@ -488,124 +601,103 @@ elif st.session_state.page == "step5":
 
     st.divider()
 
-    # ── 표현 방법별 입력 ─────────────────────────────────
+    # ── 표현 방법별 입력 (운율·비유·상징 항상 표시) ───────────
     st.markdown("#### ✏️ 활용한 표현 방법 입력")
     st.caption("초고에서 해당 표현 방법을 활용한 부분을 직접 입력하세요.")
 
-    if not methods:
-        st.info("위에서 표현 방법을 먼저 선택해야 이 섹션이 표시됩니다.")
-    else:
-        expr_inputs = st.session_state.expr_inputs
+    expr_inputs = st.session_state.expr_inputs
 
-        if "운율" in methods:
-            st.markdown("**운율**")
-            st.markdown('<div class="tip-box">💡 운율: 글에서 소리나 리듬이 반복되는 부분입니다. '
-                        '비슷한 어미, 음절 수, 반복되는 표현 등을 찾아보세요.</div>',
-                        unsafe_allow_html=True)
-            expr_inputs["운율"] = st.text_area(
-                "운율이 나타난 부분을 초고에서 찾아 그대로 입력하세요.",
-                value=expr_inputs.get("운율", ""),
-                height=80, key="expr_운율"
-            )
+    # 운율
+    st.markdown("**① 운율**")
+    st.markdown('<div class="tip-box">💡 운율: 글에서 소리나 리듬이 반복되는 부분입니다. '
+                '비슷한 어미, 음절 수, 반복되는 표현 등을 찾아보세요.</div>',
+                unsafe_allow_html=True)
+    expr_inputs["운율"] = st.text_area(
+        "운율이 나타난 부분을 초고에서 찾아 그대로 입력하세요.",
+        value=expr_inputs.get("운율", ""),
+        height=80, key="expr_운율"
+    )
 
-        if "비유" in methods:
-            st.markdown("**비유**")
-            st.markdown('<div class="tip-box">💡 비유: <b>구체적인 대상(원관념)</b>을 '
-                        '<b>다른 구체적인 대상(보조 관념)</b>에 빗대어 표현하는 방법입니다. '
-                        '(예: "다리가 납덩이처럼 무거웠다" → 원관념: 다리, 보조 관념: 납덩이)</div>',
-                        unsafe_allow_html=True)
-            expr_inputs["비유_문장"] = st.text_area(
-                "비유가 사용된 문장을 초고에서 찾아 그대로 입력하세요.",
-                value=expr_inputs.get("비유_문장", ""),
-                height=80, key="expr_비유_문장"
-            )
-            col_a, col_b = st.columns(2)
-            with col_a:
-                expr_inputs["비유_원관념"] = st.text_input(
-                    "원관념 (실제로 표현하려는 구체적 대상)",
-                    value=expr_inputs.get("비유_원관념", ""),
-                    key="expr_비유_원"
-                )
-            with col_b:
-                expr_inputs["비유_보조관념"] = st.text_input(
-                    "보조 관념 (빗댄 구체적 대상)",
-                    value=expr_inputs.get("비유_보조관념", ""),
-                    key="expr_비유_보조"
-                )
+    # 비유
+    st.markdown("**② 비유**")
+    st.markdown('<div class="tip-box">💡 비유: <b>구체적인 대상(원관념)</b>을 '
+                '<b>다른 구체적인 대상(보조 관념)</b>에 빗대어 표현하는 방법입니다. '
+                '(예: "다리가 납덩이처럼 무거웠다" → 원관념: 다리, 보조 관념: 납덩이)</div>',
+                unsafe_allow_html=True)
+    expr_inputs["비유_문장"] = st.text_area(
+        "비유가 사용된 문장을 초고에서 찾아 그대로 입력하세요.",
+        value=expr_inputs.get("비유_문장", ""),
+        height=80, key="expr_비유_문장"
+    )
+    col_a, col_b = st.columns(2)
+    with col_a:
+        expr_inputs["비유_원관념"] = st.text_input(
+            "원관념 (실제로 표현하려는 구체적 대상)",
+            value=expr_inputs.get("비유_원관념", ""),
+            key="expr_비유_원"
+        )
+    with col_b:
+        expr_inputs["비유_보조관념"] = st.text_input(
+            "보조 관념 (빗댄 구체적 대상)",
+            value=expr_inputs.get("비유_보조관념", ""),
+            key="expr_비유_보조"
+        )
 
-        if "상징" in methods:
-            st.markdown("**상징**")
-            st.markdown('<div class="tip-box">💡 상징: <b>추상적인 개념(원관념)</b>을 '
-                        '<b>구체적인 대상(보조 관념)</b>으로 나타내는 방법입니다. '
-                        '(예: "176개의 계단이 선물처럼 느껴졌다" → 원관념: 힘든 상황·성장, 보조 관념: 계단)</div>',
-                        unsafe_allow_html=True)
-            expr_inputs["상징_문장"] = st.text_area(
-                "상징이 사용된 문장을 초고에서 찾아 그대로 입력하세요.",
-                value=expr_inputs.get("상징_문장", ""),
-                height=80, key="expr_상징_문장"
-            )
-            col_a, col_b = st.columns(2)
-            with col_a:
-                expr_inputs["상징_원관념"] = st.text_input(
-                    "원관념 (상징하려는 추상적 개념)",
-                    value=expr_inputs.get("상징_원관념", ""),
-                    key="expr_상징_원"
-                )
-            with col_b:
-                expr_inputs["상징_보조관념"] = st.text_input(
-                    "보조 관념 (상징하는 구체적 대상)",
-                    value=expr_inputs.get("상징_보조관념", ""),
-                    key="expr_상징_보조"
-                )
+    # 상징
+    st.markdown("**③ 상징**")
+    st.markdown('<div class="tip-box">💡 상징: <b>추상적인 개념(원관념)</b>을 '
+                '<b>구체적인 대상(보조 관념)</b>으로 나타내는 방법입니다. '
+                '(예: "176개의 계단이 선물처럼 느껴졌다" → 원관념: 힘든 상황·성장, 보조 관념: 계단)</div>',
+                unsafe_allow_html=True)
+    expr_inputs["상징_문장"] = st.text_area(
+        "상징이 사용된 문장을 초고에서 찾아 그대로 입력하세요.",
+        value=expr_inputs.get("상징_문장", ""),
+        height=80, key="expr_상징_문장"
+    )
+    col_a, col_b = st.columns(2)
+    with col_a:
+        expr_inputs["상징_원관념"] = st.text_input(
+            "원관념 (상징하려는 추상적 개념)",
+            value=expr_inputs.get("상징_원관념", ""),
+            key="expr_상징_원"
+        )
+    with col_b:
+        expr_inputs["상징_보조관념"] = st.text_input(
+            "보조 관념 (상징하는 구체적 대상)",
+            value=expr_inputs.get("상징_보조관념", ""),
+            key="expr_상징_보조"
+        )
 
-        st.session_state.expr_inputs = expr_inputs
+    st.session_state.expr_inputs = expr_inputs
 
     st.divider()
 
     # ── AI 피드백 ─────────────────────────────────────────
     st.markdown("#### 🤖 AI 표현 방법 점검")
 
-    # 표현 방법 입력 여부 확인 (AI 버튼 활성화 조건)
-    def check_expr_filled(methods, expr_inputs):
-        """표현 방법별로 최소한의 입력이 있는지 확인"""
-        if not methods:
-            return False
-        for m in methods:
-            if m == "운율" and not expr_inputs.get("운율", "").strip():
-                return False
-            if m == "비유" and not expr_inputs.get("비유_문장", "").strip():
-                return False
-            if m == "상징" and not expr_inputs.get("상징_문장", "").strip():
-                return False
-        return True
+    # 세 가지 표현 방법 모두 최소 입력 여부 확인
+    expr_filled = (
+        bool(expr_inputs.get("운율", "").strip()) and
+        bool(expr_inputs.get("비유_문장", "").strip()) and
+        bool(expr_inputs.get("상징_문장", "").strip())
+    )
 
-    expr_filled = check_expr_filled(methods, st.session_state.expr_inputs)
-
-    if not expr_filled and methods:
-        st.caption("⬆️ 위의 표현 방법 입력을 완료해야 AI 피드백을 받을 수 있습니다.")
+    if not expr_filled:
+        st.caption("⬆️ 운율·비유·상징 입력을 모두 완료해야 AI 피드백을 받을 수 있습니다.")
 
     api_badge()
-    if st.button("AI 피드백 받기", type="primary", disabled=(not expr_filled)):
+    if st.button("AI 피드백 받기", type="primary", disabled=not expr_filled):
         with st.spinner("AI가 표현 방법을 분석하고 있습니다..."):
-            expr_inputs = st.session_state.expr_inputs
 
-            # 표현 방법 입력 정리
-            expr_summary = []
-            if "운율" in methods:
-                expr_summary.append(f"[운율] 학생이 찾은 부분: {expr_inputs.get('운율','(미입력)')}")
-            if "비유" in methods:
-                expr_summary.append(
-                    f"[비유] 사용 문장: {expr_inputs.get('비유_문장','(미입력)')}\n"
-                    f"  원관념: {expr_inputs.get('비유_원관념','(미입력)')} / "
-                    f"보조 관념: {expr_inputs.get('비유_보조관념','(미입력)')}"
-                )
-            if "상징" in methods:
-                expr_summary.append(
-                    f"[상징] 사용 문장: {expr_inputs.get('상징_문장','(미입력)')}\n"
-                    f"  원관념: {expr_inputs.get('상징_원관념','(미입력)')} / "
-                    f"보조 관념: {expr_inputs.get('상징_보조관념','(미입력)')}"
-                )
-            expr_text = "\n".join(expr_summary) if expr_summary else "(표현 방법 입력 없음)"
+            expr_text = (
+                f"[운율] 학생이 찾은 부분: {expr_inputs.get('운율','(미입력)')}\n\n"
+                f"[비유] 사용 문장: {expr_inputs.get('비유_문장','(미입력)')}\n"
+                f"  원관념: {expr_inputs.get('비유_원관념','(미입력)')} / "
+                f"보조 관념: {expr_inputs.get('비유_보조관념','(미입력)')}\n\n"
+                f"[상징] 사용 문장: {expr_inputs.get('상징_문장','(미입력)')}\n"
+                f"  원관념: {expr_inputs.get('상징_원관념','(미입력)')} / "
+                f"보조 관념: {expr_inputs.get('상징_보조관념','(미입력)')}"
+            )
 
             unchecked = [label for key, label in checks.items() if not check_results[key]]
             checklist_summary = ("모든 항목을 체크하였습니다." if not unchecked
@@ -625,9 +717,6 @@ elif st.session_state.page == "step5":
 제목: {plan.get('title','')}
 {st.session_state.draft}
 
-[학생이 계획한 표현 방법]
-{', '.join(methods)}
-
 [학생이 입력한 표현 방법 활용 내용]
 {expr_text}
 
@@ -638,7 +727,7 @@ elif st.session_state.page == "step5":
 반드시 아래 두 파트로만 구성하십시오.
 
 **[표현 방법 평가]**
-각 표현 방법에 대해 아래를 평가하십시오.
+운율, 비유, 상징 각각에 대해 아래를 평가하십시오.
 - 학생이 찾은 원관념과 보조 관념이 개념 정의에 부합하는지 판단하십시오.
 - 부합하지 않는다면 어떤 점이 잘못되었는지 구체적으로 지적하십시오.
 - 초고에서 해당 표현 방법이 실제로 효과적으로 기능하는지 평가하십시오.
@@ -670,23 +759,19 @@ elif st.session_state.page == "step5":
                     unsafe_allow_html=True)
 
     st.divider()
-    st.markdown("#### ✍️ 최종 수정본")
-    st.caption("AI 피드백을 반영하여 글을 고쳐 쓰세요.")
-    final = st.text_area("최종 수정본",
-                         value=st.session_state.draft,
-                         height=300)
 
     col1, col2, col3 = st.columns([1, 3, 1])
     with col1:
         if st.button("← 메뉴"):
             go("menu")
     with col3:
-        if st.button("✅ 최종 제출", type="primary", use_container_width=True):
-            log_to_sheet(st.session_state.student_id, st.session_state.student_name,
-                         "✅ 최종 제출",
-                         f"제목: {plan.get('title','')}\n\n{final}")
-            st.session_state.final = final
-            go("done")
+        if st.button("✅ 제출 완료", type="primary", use_container_width=True):
+            if not st.session_state.revise_fb:
+                st.warning("AI 피드백을 먼저 받아주세요.")
+            else:
+                log_to_sheet(st.session_state.student_id, st.session_state.student_name,
+                             "✅ 최종 제출", f"제목: {plan.get('title','')}\n\n{st.session_state.draft}")
+                go("done")
 
 # ══════════════════════════════════════════════════════════════
 # PAGE: DONE
@@ -697,12 +782,12 @@ elif st.session_state.page == "done":
 
     p = st.session_state.plan
     st.markdown(f"### {p.get('title', '나의 글')}")
-    st.write(st.session_state.get("final", st.session_state.draft))
+    st.write(st.session_state.draft)
 
     st.divider()
     st.markdown("**📊 나의 글쓰기 과정 요약**")
     st.markdown(f"- 글감: {p.get('glam', '')}")
     st.markdown(f"- 중심 정서: {p.get('emotion', '')}")
-    st.markdown(f"- 활용한 표현 방법: {', '.join(p.get('method', []))}")
+    st.markdown(f"- 활용한 표현 방법: 운율 · 비유 · 상징")
     checked = sum(1 for v in st.session_state.checklist.values() if v)
     st.markdown(f"- 자기 점검: {checked}/5 항목 완료")
