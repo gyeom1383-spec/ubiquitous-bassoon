@@ -373,13 +373,13 @@ elif st.session_state.page == "step3":
                     f'{st.session_state.structure_fb.replace(chr(10), "<br>")}</div>',
                     unsafe_allow_html=True)
 
-    col1, col2 = st.columns([1, 4])
+    col1, col2, col3 = st.columns([1, 3, 1])
     with col1:
         if st.button("← 메뉴"):
             st.session_state.structure = structure
             go("menu")
-    with col2:
-        if st.button("저장하고 메뉴로 →", type="primary"):
+    with col3:
+        if st.button("저장하고 메뉴로 →", type="primary", use_container_width=True):
             if not structure.strip():
                 st.warning("구성을 먼저 작성해 주세요.")
             else:
@@ -635,12 +635,12 @@ elif st.session_state.page == "step5":
                          value=st.session_state.draft,
                          height=300)
 
-    col1, col2 = st.columns([1, 4])
+    col1, col2, col3 = st.columns([1, 3, 1])
     with col1:
         if st.button("← 메뉴"):
             go("menu")
-    with col2:
-        if st.button("✅ 최종 제출", type="primary"):
+    with col3:
+        if st.button("✅ 최종 제출", type="primary", use_container_width=True):
             log_to_sheet(st.session_state.student_id, st.session_state.student_name,
                          "✅ 최종 제출",
                          f"제목: {plan.get('title','')}\n\n{final}")
