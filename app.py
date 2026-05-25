@@ -407,16 +407,16 @@ elif st.session_state.page == "explore1":
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
-    # ── 학생 입력: 모둠 최종 답안만 ──────────────────────
-    st.markdown("#### ✏️ 모둠 최종 답안")
+    # ── 학생 입력: 모둠 답안만 ──────────────────────
+    st.markdown("#### ✏️ 모둠 답안")
     st.markdown(
-        '<div class="tip-box">💡 모둠원과 함께 논의한 내용을 바탕으로 최종 답안을 정리해 입력하세요.<br>'
+        '<div class="tip-box">💡 모둠원과 함께 논의한 내용을 바탕으로 답안을 정리해 입력하세요.<br>'
         'A와 B의 차이, 그리고 B처럼 표현한 이유를 함께 담아 보세요.</div>',
         unsafe_allow_html=True
     )
 
     group = st.text_area(
-        "모둠 최종 답안",
+        "모둠 답안",
         value=st.session_state.explore1_group,
         placeholder="",
         height=140,
@@ -435,7 +435,7 @@ elif st.session_state.page == "explore1":
     )
 
     if not group.strip():
-        st.caption("⬆️ 모둠 최종 답안을 입력해야 AI 피드백을 받을 수 있습니다.")
+        st.caption("⬆️ 모둠 답안을 입력해야 AI 피드백을 받을 수 있습니다.")
 
     api_badge()
     if st.button("🤖 AI 피드백 받기", type="primary", disabled=not group.strip(), key="e1_ai_btn"):
@@ -447,7 +447,7 @@ elif st.session_state.page == "explore1":
 A: 마음이 가벼워졌다.
 B: 두 다리는 묵직했지만 마음은 엘리베이터를 타고 오르듯 가벼웠다.
 
-[학생 모둠 최종 답안]
+[학생 모둠 답안]
 {group}
 
 [피드백 지침]
