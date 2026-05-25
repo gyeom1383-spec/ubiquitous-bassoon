@@ -401,53 +401,38 @@ elif st.session_state.page == "explore1":
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
-    # ── 학생 입력 ─────────────────────────────────────────
-    st.markdown("#### ✏️ 모둠 활동: 탐구해 봅시다.")
-
-    diff = st.text_area(
-        "① A와 B가 다른 부분은 무엇인가요?",
-        value=st.session_state.explore1_diff,
-        placeholder="예) A는 감정을 직접 말했고, B는 구체적인 상황과 비유를 사용해서 표현했다.",
-        height=90,
-        key="e1_diff"
-    )
-
-    reason = st.text_area(
-        "② B처럼 표현한 이유는 무엇일까요?",
-        value=st.session_state.explore1_reason,
-        placeholder="예) 독자가 '다리는 무겁지만 기분은 가볍다'는 감정을 더 생생하게 느낄 수 있도록 하기 위해서",
-        height=90,
-        key="e1_reason"
+    # ── 학생 입력: 모둠 최종 답안만 ──────────────────────
+    st.markdown("#### ✏️ 모둠 최종 답안")
+    st.markdown(
+        '<div class="tip-box">💡 모둠원과 함께 논의한 내용을 바탕으로 최종 답안을 정리해 입력하세요.<br>'
+        'A와 B의 차이, 그리고 B처럼 표현한 이유를 함께 담아 보세요.</div>',
+        unsafe_allow_html=True
     )
 
     group = st.text_area(
-        "③ 모둠 최종 답안 (모둠원과 함께 정리한 내용을 써 주세요.)",
+        "모둠 최종 답안",
         value=st.session_state.explore1_group,
-        placeholder="모둠에서 함께 논의하여 정리한 내용을 입력하세요.",
-        height=110,
+        placeholder="예) A는 '가벼워졌다'고 감정을 직접 말했지만, B는 '엘리베이터를 타고 오르듯'이라는 비유와 '다리는 묵직했지만'이라는 대조를 함께 사용하여 독자가 감정을 생생하게 느낄 수 있도록 표현했다.",
+        height=140,
         key="e1_group"
     )
-
-    st.session_state.explore1_diff   = diff
-    st.session_state.explore1_reason = reason
-    st.session_state.explore1_group  = group
+    st.session_state.explore1_group = group
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     # ── AI 피드백 ─────────────────────────────────────────
     st.markdown("#### 🤖 AI 피드백 받기")
     st.markdown(
-        '<div class="tip-box">💡 모둠 답안을 모두 입력한 뒤 AI 피드백을 받아 보세요. '
-        'AI 피드백을 참고하여 최종 답안을 직접 완성해야 합니다.</div>',
+        '<div class="tip-box">💡 모둠 답안을 입력한 뒤 AI 피드백을 받아 보세요. '
+        'AI 피드백을 학습지에 옮겨 적고, 최종 답안을 발전시켜 보세요.</div>',
         unsafe_allow_html=True
     )
 
-    all_filled = diff.strip() and reason.strip() and group.strip()
-    if not all_filled:
-        st.caption("⬆️ 세 항목을 모두 입력해야 AI 피드백을 받을 수 있습니다.")
+    if not group.strip():
+        st.caption("⬆️ 모둠 최종 답안을 입력해야 AI 피드백을 받을 수 있습니다.")
 
     api_badge()
-    if st.button("🤖 AI 피드백 받기", type="primary", disabled=not all_filled, key="e1_ai_btn"):
+    if st.button("🤖 AI 피드백 받기", type="primary", disabled=not group.strip(), key="e1_ai_btn"):
         with st.spinner("AI가 여러분의 탐구 내용을 분석하고 있습니다..."):
             prompt = f"""당신은 중학교 1학년 국어를 지도하는 교사입니다.
 학생들이 모둠 활동으로 다음 두 표현을 비교하고 탐구하였습니다.
@@ -456,10 +441,8 @@ elif st.session_state.page == "explore1":
 A: 마음이 가벼워졌다.
 B: 두 다리는 묵직했지만 마음은 엘리베이터를 타고 오르듯 가벼웠다.
 
-[학생 모둠 탐구 내용]
-① A와 B가 다른 부분: {diff}
-② B처럼 표현한 이유: {reason}
-③ 모둠 최종 답안: {group}
+[학생 모둠 최종 답안]
+{group}
 
 [피드백 지침]
 반드시 '--습니다'체를 사용하고 아래 두 파트로만 구성하십시오.
@@ -474,63 +457,53 @@ B: 두 다리는 묵직했지만 마음은 엘리베이터를 타고 오르듯 �
 **[생각을 발전시키는 질문]**
 - 학생들이 스스로 답을 심화·수정할 수 있도록 구체적인 질문 2개를 제시하십시오.
 - "B에서 '대조'가 쓰인 부분은 어디인가요?" 처럼 핵심 개념을 스스로 발견하게 유도하십시오.
-- 수정된 정답을 직접 제공하지 마십시오."""
+- 수정된 정답을 직접 제공하지 마십시오.
+
+---
+피드백을 모두 작성한 뒤, 반드시 아래 형식의 섹션을 추가하십시오.
+
+**[📋 학습지 정리용 요약]**
+위 피드백의 핵심 내용을 학생이 학습지에 받아 적기 쉽도록 개조식(•)으로 3~5줄 이내로 요약하십시오.
+각 항목은 짧고 명확한 한 문장으로 작성하십시오."""
 
             fb, key_used, key_total = ai_call(prompt)
             st.session_state.explore1_fb = fb
             st.session_state.api_used = (key_used, key_total)
 
-            content = (
-                f"[A와 B 다른 부분]\n{diff}\n\n"
-                f"[B처럼 표현한 이유]\n{reason}\n\n"
-                f"[모둠 답안]\n{group}"
-            )
             log_to_sheet(
                 st.session_state.student_id, st.session_state.student_name,
-                "탐구① 효과적 표현 방법", content, fb
+                "탐구① 효과적 표현 방법", f"[모둠 답안]\n{group}", fb
             )
 
     api_badge()
     if st.session_state.explore1_fb:
+        fb_text = st.session_state.explore1_fb
+
+        # 요약 섹션 분리
+        summary_marker = "**[📋 학습지 정리용 요약]**"
+        if summary_marker in fb_text:
+            main_fb, summary_fb = fb_text.split(summary_marker, 1)
+        else:
+            main_fb, summary_fb = fb_text, ""
+
+        # 본문 피드백
         st.markdown(
             f'<div class="ai-box">🤖 <b>AI 피드백</b><br><br>'
-            f'{st.session_state.explore1_fb.replace(chr(10), "<br>")}</div>',
+            f'{main_fb.strip().replace(chr(10), "<br>")}</div>',
             unsafe_allow_html=True
         )
 
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        # 개조식 요약 박스
+        if summary_fb.strip():
+            st.markdown(
+                f'<div class="final-box">📋 <b>학습지 정리용 요약</b> — 아래 내용을 학습지에 옮겨 적으세요.<br><br>'
+                f'{summary_fb.strip().replace(chr(10), "<br>")}</div>',
+                unsafe_allow_html=True
+            )
 
-    # ── 최종 답안 ─────────────────────────────────────────
-    st.markdown("#### 📝 최종 답안 작성")
-    st.markdown(
-        '<div class="tip-box">💡 AI 피드백을 참고하여, 나만의 언어로 최종 답안을 완성해 보세요. '
-        'A와 B의 차이와 B처럼 표현한 이유를 한 문단으로 정리해 보세요.</div>',
-        unsafe_allow_html=True
-    )
-
-    final = st.text_area(
-        "최종 답안",
-        value=st.session_state.explore1_final,
-        placeholder="AI 피드백을 참고하여, 스스로 발전시킨 최종 답안을 작성하세요.",
-        height=130,
-        key="e1_final"
-    )
-    st.session_state.explore1_final = final
-
-    col1, col2, col3 = st.columns([1, 3, 1])
-    with col1:
-        if st.button("← 메뉴", key="e1_back"):
-            go("menu")
-    with col3:
-        if st.button("저장하기 ✓", type="primary", use_container_width=True, key="e1_save"):
-            if not final.strip():
-                st.warning("최종 답안을 작성해 주세요.")
-            else:
-                log_to_sheet(
-                    st.session_state.student_id, st.session_state.student_name,
-                    "탐구① 효과적 표현 방법 (최종 답안)", final
-                )
-                st.success("최종 답안이 저장되었습니다! 메뉴로 돌아가 다음 활동을 선택하세요.")
+    st.markdown("")
+    if st.button("← 메뉴로 돌아가기", key="e1_back", use_container_width=True):
+        go("menu")
 
 # ══════════════════════════════════════════════════════════════
 # PAGE: EXPLORE 2 · 진솔하게 글을 쓰는 방법 탐구하기
@@ -633,7 +606,14 @@ elif st.session_state.page == "explore2":
 **[표현을 더 발전시키는 질문]**
 - 학생이 자신의 표현을 스스로 심화할 수 있도록 구체적인 질문 2개를 제시하십시오.
 - 예를 들어 "그 순간 손이나 발은 어떤 상태였나요?", "머릿속에 어떤 생각이 가장 먼저 떠올랐나요?" 등 감각·행동·생각을 더 구체화하도록 유도하십시오.
-- 수정된 문장을 직접 제공하지 마십시오."""
+- 수정된 문장을 직접 제공하지 마십시오.
+
+---
+피드백을 모두 작성한 뒤, 반드시 아래 형식의 섹션을 추가하십시오.
+
+**[📋 학습지 정리용 요약]**
+위 피드백의 핵심 내용을 학생이 학습지에 받아 적기 쉽도록 개조식(•)으로 3~5줄 이내로 요약하십시오.
+각 항목은 짧고 명확한 한 문장으로 작성하십시오."""
 
             fb, key_used, key_total = ai_call(prompt)
             st.session_state.explore2_fb = fb
@@ -651,45 +631,30 @@ elif st.session_state.page == "explore2":
 
     api_badge()
     if st.session_state.explore2_fb:
+        fb_text2 = st.session_state.explore2_fb
+
+        summary_marker2 = "**[📋 학습지 정리용 요약]**"
+        if summary_marker2 in fb_text2:
+            main_fb2, summary_fb2 = fb_text2.split(summary_marker2, 1)
+        else:
+            main_fb2, summary_fb2 = fb_text2, ""
+
         st.markdown(
             f'<div class="ai-box">🤖 <b>AI 피드백</b><br><br>'
-            f'{st.session_state.explore2_fb.replace(chr(10), "<br>")}</div>',
+            f'{main_fb2.strip().replace(chr(10), "<br>")}</div>',
             unsafe_allow_html=True
         )
 
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        if summary_fb2.strip():
+            st.markdown(
+                f'<div class="final-box">📋 <b>학습지 정리용 요약</b> — 아래 내용을 학습지에 옮겨 적으세요.<br><br>'
+                f'{summary_fb2.strip().replace(chr(10), "<br>")}</div>',
+                unsafe_allow_html=True
+            )
 
-    # ── 최종 정리 ─────────────────────────────────────────
-    st.markdown("#### 📝 표현 발전시키기")
-    st.markdown(
-        '<div class="tip-box">💡 AI 피드백을 참고하여 나의 표현을 더욱 발전시켜 보세요. '
-        '글쓰기 단계에서 이 표현을 활용할 수 있습니다.</div>',
-        unsafe_allow_html=True
-    )
-
-    final2 = st.text_area(
-        "발전시킨 진솔한 표현",
-        value=st.session_state.explore2_final,
-        placeholder="AI 피드백을 반영하여 더 구체적이고 진솔하게 발전시킨 표현을 써 보세요.",
-        height=130,
-        key="e2_final"
-    )
-    st.session_state.explore2_final = final2
-
-    col1, col2, col3 = st.columns([1, 3, 1])
-    with col1:
-        if st.button("← 메뉴", key="e2_back"):
-            go("menu")
-    with col3:
-        if st.button("저장하기 ✓", type="primary", use_container_width=True, key="e2_save"):
-            if not final2.strip():
-                st.warning("발전시킨 표현을 작성해 주세요.")
-            else:
-                log_to_sheet(
-                    st.session_state.student_id, st.session_state.student_name,
-                    "탐구② 진솔하게 글 쓰는 방법 (최종 표현)", final2
-                )
-                st.success("저장되었습니다! 메뉴로 돌아가 다음 활동을 선택하세요.")
+    st.markdown("")
+    if st.button("← 메뉴로 돌아가기", key="e2_back", use_container_width=True):
+        go("menu")
 
 # ══════════════════════════════════════════════════════════════
 # PAGE: STEP 1 · 계획하기
