@@ -30,6 +30,12 @@ st.markdown("""
     font-size: 1.0rem; font-weight: 600;
     margin-bottom: 6px;
   }
+  .explore-header {
+    background: #4527A0; color: white;
+    padding: 10px 18px; border-radius: 8px;
+    font-size: 1.05rem; font-weight: 700;
+    margin-bottom: 12px;
+  }
   .tip-box {
     background: #FFFDE7; border-left: 4px solid #F9A825;
     padding: 10px 14px; border-radius: 4px;
@@ -50,6 +56,29 @@ st.markdown("""
     background: #E8F5E9; border-left: 4px solid #2E7D32;
     padding: 10px 14px; border-radius: 4px;
     font-size: 0.92rem; margin-bottom: 10px;
+  }
+  .compare-box-a {
+    background: #FFF3E0; border-left: 4px solid #FF6D00;
+    padding: 12px 16px; border-radius: 4px;
+    font-size: 1.0rem; margin-bottom: 8px;
+  }
+  .compare-box-b {
+    background: #E8F5E9; border-left: 4px solid #2E7D32;
+    padding: 12px 16px; border-radius: 4px;
+    font-size: 1.0rem; margin-bottom: 8px;
+  }
+  .final-box {
+    background: #EDE7F6; border-left: 4px solid #4527A0;
+    padding: 12px 16px; border-radius: 4px;
+    font-size: 0.95rem; margin-top: 12px;
+  }
+  .section-divider {
+    border: none; border-top: 2px dashed #BDBDBD;
+    margin: 20px 0;
+  }
+  .menu-section-label {
+    color: #757575; font-size: 0.85rem; font-weight: 600;
+    letter-spacing: 0.05em; margin-top: 14px; margin-bottom: 4px;
   }
 </style>
 """, unsafe_allow_html=True)
@@ -113,13 +142,12 @@ def get_sheet():
 
 HEADERS = ["학번", "이름", "글쓰기 단계", "제출 내용", "피드백 내용", "제출 시각"]
 
-# 단계 레이블 → 세션 키 매핑 (복원용)
 STEP_LABELS = {
-    "① 계획하기":    "plan_raw",
-    "② 내용 생성하기": "memo",
-    "③ 내용 조직하기": "structure",
-    "④ 초고 쓰기":   "draft_raw",
-    "⑤ 고쳐쓰기":   "revise_raw",
+    "① 계획하기":       "plan_raw",
+    "② 내용 생성하기":  "memo",
+    "③ 내용 조직하기":  "structure",
+    "④ 초고 쓰기":      "draft_raw",
+    "⑤ 고쳐쓰기":      "revise_raw",
 }
 
 def log_to_sheet(student_id, name, step_name, content, feedback=""):
@@ -143,18 +171,11 @@ def log_to_sheet(student_id, name, step_name, content, feedback=""):
                 st.warning(f"기록 저장 중 오류가 발생했어요: {e}")
 
 def load_student_data(student_id: str, name: str) -> dict:
-    """
-    시트에서 해당 학번+이름의 가장 최신 기록을 단계별로 읽어
-    복원할 데이터 딕셔너리를 반환합니다.
-    없으면 빈 딕셔너리를 반환합니다.
-    """
     try:
         sheet = get_sheet()
         rows = sheet.get_all_values()
         if not rows or len(rows) < 2:
             return {}
-
-        # 헤더 행 제외, 해당 학번+이름 행만 필터
         matched = [
             r for r in rows[1:]
             if len(r) >= 4 and str(r[0]).strip() == str(student_id).strip()
@@ -162,47 +183,36 @@ def load_student_data(student_id: str, name: str) -> dict:
         ]
         if not matched:
             return {}
-
-        # 단계별 가장 마지막 행을 dict로 구성
-        # columns: 학번(0) 이름(1) 단계(2) 내용(3) 피드백(4) 시각(5)
         latest = {}
         for row in matched:
             step = row[2].strip()
             latest[step] = {"content": row[3], "feedback": row[4] if len(row) > 4 else ""}
-
         return latest
     except Exception:
         return {}
 
 def restore_session(saved: dict):
-    """시트에서 읽은 데이터를 세션 상태에 복원합니다."""
     if not saved:
         return
 
-    # ① 계획하기 복원
     if "① 계획하기" in saved:
         raw = saved["① 계획하기"]["content"]
-        # 저장 형식: "글감: ...\n중심 정서: ...\n표현 방법: ..."
         plan = {}
         for line in raw.split("\n"):
             if line.startswith("글감:"):
                 plan["glam"] = line.replace("글감:", "").strip()
             elif line.startswith("중심 정서:"):
                 plan["emotion"] = line.replace("중심 정서:", "").strip()
-            # 표현 방법은 이제 고정이므로 저장 불필요하지만 하위 호환을 위해 유지
         plan["method"] = ALL_METHODS
         st.session_state.plan = plan
 
-    # ② 내용 생성하기 복원
     if "② 내용 생성하기" in saved:
         st.session_state.memo = saved["② 내용 생성하기"]["content"]
 
-    # ③ 내용 조직하기 복원
     if "③ 내용 조직하기" in saved:
         raw = saved["③ 내용 조직하기"]["content"]
         st.session_state.structure = raw
         st.session_state.structure_fb = saved["③ 내용 조직하기"]["feedback"]
-        # 문단 복원 시도
         paras = [""] * 5
         labels = ["1문단", "2문단", "3문단", "4문단", "5문단"]
         for line in raw.split("\n"):
@@ -211,7 +221,6 @@ def restore_session(saved: dict):
                     paras[i] = line[len(lbl)+1:].strip()
         st.session_state.structure_paras = paras
 
-    # ④ 초고 쓰기 복원
     if "④ 초고 쓰기" in saved:
         raw = saved["④ 초고 쓰기"]["content"]
         lines = raw.split("\n")
@@ -222,7 +231,6 @@ def restore_session(saved: dict):
         else:
             st.session_state.draft = raw
 
-    # ⑤ 고쳐쓰기 복원 (피드백만)
     if "⑤ 고쳐쓰기" in saved:
         st.session_state.revise_fb = saved["⑤ 고쳐쓰기"]["feedback"]
 
@@ -241,7 +249,19 @@ defaults = {
     "expr_inputs": {},
     "revise_fb": "",
     "api_used": None,
-    "restored": False,   # 복원 완료 여부 플래그
+    "restored": False,
+    # ── 탐구①: 효과적으로 표현하는 방법 ──
+    "explore1_diff": "",       # A와 B가 다른 부분
+    "explore1_reason": "",     # B처럼 표현한 이유
+    "explore1_group": "",      # 모둠 답안
+    "explore1_fb": "",         # AI 피드백
+    "explore1_final": "",      # 최종 답안
+    # ── 탐구②: 진솔하게 글을 쓰는 방법 ──
+    "explore2_experience": "", # 떠올린 경험
+    "explore2_emotion": "",    # 당시 감정
+    "explore2_honest": "",     # 진솔한 표현 시도
+    "explore2_fb": "",         # AI 피드백
+    "explore2_final": "",      # 최종 정리
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -270,6 +290,9 @@ def step_label(n, title, active):
     tag = "step-header" if active else "step-inactive"
     st.markdown(f'<div class="{tag}">STEP {n}  |  {title}</div>', unsafe_allow_html=True)
 
+def explore_label(title):
+    st.markdown(f'<div class="explore-header">🔍 {title}</div>', unsafe_allow_html=True)
+
 # ══════════════════════════════════════════════════════════════
 # PAGE: LOGIN
 # ══════════════════════════════════════════════════════════════
@@ -293,7 +316,6 @@ if st.session_state.page == "login":
             st.session_state.student_id   = sid
             st.session_state.student_name = sname
 
-            # ── 이전 기록 불러오기 ──────────────────────────
             with st.spinner("이전 기록을 확인하는 중..."):
                 saved = load_student_data(sid, sname)
 
@@ -308,7 +330,6 @@ if st.session_state.page == "login":
             else:
                 st.session_state.restored = False
                 st.session_state.restore_msg = ""
-                # 새 학생 — plan에 method 기본값 설정
                 st.session_state.plan = {"method": ALL_METHODS}
 
             go("menu")
@@ -318,18 +339,27 @@ if st.session_state.page == "login":
 # ══════════════════════════════════════════════════════════════
 elif st.session_state.page == "menu":
     student_bar()
-    st.markdown('<div class="step-header">✍️ 글쓰기 단계 선택</div>',
+    st.markdown('<div class="step-header">✍️ 학습 활동 선택</div>',
                 unsafe_allow_html=True)
 
-    # 복원 알림
     if st.session_state.get("restore_msg"):
         st.markdown(
             f'<div class="restore-box">📂 {st.session_state.restore_msg}</div>',
             unsafe_allow_html=True
         )
 
-    st.caption("진행할 단계를 선택하세요.")
-    st.markdown("")
+    # ── 탐구 활동 ──────────────────────────────────────────
+    st.markdown('<div class="menu-section-label">📖 탐구 활동</div>', unsafe_allow_html=True)
+
+    if st.button("🔍 효과적으로 표현하는 방법 탐구하기", use_container_width=True):
+        go("explore1")
+
+    if st.button("🔍 진솔하게 글을 쓰는 방법 탐구하기", use_container_width=True):
+        go("explore2")
+
+    # ── 글쓰기 단계 ────────────────────────────────────────
+    st.markdown('<div class="menu-section-label">✏️ 글쓰기 단계</div>', unsafe_allow_html=True)
+    st.caption("순서대로 진행해 보세요.")
 
     steps = [
         ("step1", "STEP 1 | 계획하기"),
@@ -345,6 +375,321 @@ elif st.session_state.page == "menu":
     st.divider()
     if st.button("← 학번·이름 변경"):
         go("login")
+
+# ══════════════════════════════════════════════════════════════
+# PAGE: EXPLORE 1 · 효과적으로 표현하는 방법 탐구하기
+# ══════════════════════════════════════════════════════════════
+elif st.session_state.page == "explore1":
+    student_bar()
+    explore_label("효과적으로 표현하는 방법 탐구하기")
+    st.caption("글쓴이가 왜 그렇게 표현했는지 탐구해 봅시다.")
+
+    # ── 비교 자료 제시 ────────────────────────────────────
+    st.markdown("#### 📌 다음 두 표현을 비교해 봅시다.")
+    st.markdown(
+        '<div class="compare-box-a">'
+        '<b>A</b> &nbsp; 마음이 가벼워졌다.'
+        '</div>',
+        unsafe_allow_html=True
+    )
+    st.markdown(
+        '<div class="compare-box-b">'
+        '<b>B</b> &nbsp; 두 다리는 묵직했지만 마음은 엘리베이터를 타고 오르듯 가벼웠다.'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
+    # ── 학생 입력 ─────────────────────────────────────────
+    st.markdown("#### ✏️ 모둠 활동: 탐구해 봅시다.")
+
+    diff = st.text_area(
+        "① A와 B가 다른 부분은 무엇인가요?",
+        value=st.session_state.explore1_diff,
+        placeholder="예) A는 감정을 직접 말했고, B는 구체적인 상황과 비유를 사용해서 표현했다.",
+        height=90,
+        key="e1_diff"
+    )
+
+    reason = st.text_area(
+        "② B처럼 표현한 이유는 무엇일까요?",
+        value=st.session_state.explore1_reason,
+        placeholder="예) 독자가 '다리는 무겁지만 기분은 가볍다'는 감정을 더 생생하게 느낄 수 있도록 하기 위해서",
+        height=90,
+        key="e1_reason"
+    )
+
+    group = st.text_area(
+        "③ 모둠 최종 답안 (모둠원과 함께 정리한 내용을 써 주세요.)",
+        value=st.session_state.explore1_group,
+        placeholder="모둠에서 함께 논의하여 정리한 내용을 입력하세요.",
+        height=110,
+        key="e1_group"
+    )
+
+    st.session_state.explore1_diff   = diff
+    st.session_state.explore1_reason = reason
+    st.session_state.explore1_group  = group
+
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
+    # ── AI 피드백 ─────────────────────────────────────────
+    st.markdown("#### 🤖 AI 피드백 받기")
+    st.markdown(
+        '<div class="tip-box">💡 모둠 답안을 모두 입력한 뒤 AI 피드백을 받아 보세요. '
+        'AI 피드백을 참고하여 최종 답안을 직접 완성해야 합니다.</div>',
+        unsafe_allow_html=True
+    )
+
+    all_filled = diff.strip() and reason.strip() and group.strip()
+    if not all_filled:
+        st.caption("⬆️ 세 항목을 모두 입력해야 AI 피드백을 받을 수 있습니다.")
+
+    api_badge()
+    if st.button("🤖 AI 피드백 받기", type="primary", disabled=not all_filled, key="e1_ai_btn"):
+        with st.spinner("AI가 여러분의 탐구 내용을 분석하고 있습니다..."):
+            prompt = f"""당신은 중학교 1학년 국어를 지도하는 교사입니다.
+학생들이 모둠 활동으로 다음 두 표현을 비교하고 탐구하였습니다.
+
+[비교 대상]
+A: 마음이 가벼워졌다.
+B: 두 다리는 묵직했지만 마음은 엘리베이터를 타고 오르듯 가벼웠다.
+
+[학생 모둠 탐구 내용]
+① A와 B가 다른 부분: {diff}
+② B처럼 표현한 이유: {reason}
+③ 모둠 최종 답안: {group}
+
+[피드백 지침]
+반드시 '--습니다'체를 사용하고 아래 두 파트로만 구성하십시오.
+정답을 직접 알려주지 말고, 학생 스스로 답을 발전시킬 수 있도록 비계를 제공하십시오.
+
+**[탐구 내용 평가]**
+- 학생들이 A와 B의 차이를 핵심(감정의 직접 표현 vs. 비유·대조를 통한 간접 표현)에서 파악하고 있는지 평가하십시오.
+- B 표현의 핵심 특징(대조적 구조, 비유 활용, 구체적 상황 제시)이 탐구 내용에 포함되었는지 평가하십시오.
+- 부족하거나 잘못 이해된 부분이 있다면 구체적으로 지적하십시오.
+- 실제로 잘 파악한 부분이 있다면 간략히 언급하십시오.
+
+**[생각을 발전시키는 질문]**
+- 학생들이 스스로 답을 심화·수정할 수 있도록 구체적인 질문 2개를 제시하십시오.
+- "B에서 '대조'가 쓰인 부분은 어디인가요?" 처럼 핵심 개념을 스스로 발견하게 유도하십시오.
+- 수정된 정답을 직접 제공하지 마십시오."""
+
+            fb, key_used, key_total = ai_call(prompt)
+            st.session_state.explore1_fb = fb
+            st.session_state.api_used = (key_used, key_total)
+
+            content = (
+                f"[A와 B 다른 부분]\n{diff}\n\n"
+                f"[B처럼 표현한 이유]\n{reason}\n\n"
+                f"[모둠 답안]\n{group}"
+            )
+            log_to_sheet(
+                st.session_state.student_id, st.session_state.student_name,
+                "탐구① 효과적 표현 방법", content, fb
+            )
+
+    api_badge()
+    if st.session_state.explore1_fb:
+        st.markdown(
+            f'<div class="ai-box">🤖 <b>AI 피드백</b><br><br>'
+            f'{st.session_state.explore1_fb.replace(chr(10), "<br>")}</div>',
+            unsafe_allow_html=True
+        )
+
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
+    # ── 최종 답안 ─────────────────────────────────────────
+    st.markdown("#### 📝 최종 답안 작성")
+    st.markdown(
+        '<div class="tip-box">💡 AI 피드백을 참고하여, 나만의 언어로 최종 답안을 완성해 보세요. '
+        'A와 B의 차이와 B처럼 표현한 이유를 한 문단으로 정리해 보세요.</div>',
+        unsafe_allow_html=True
+    )
+
+    final = st.text_area(
+        "최종 답안",
+        value=st.session_state.explore1_final,
+        placeholder="AI 피드백을 참고하여, 스스로 발전시킨 최종 답안을 작성하세요.",
+        height=130,
+        key="e1_final"
+    )
+    st.session_state.explore1_final = final
+
+    col1, col2, col3 = st.columns([1, 3, 1])
+    with col1:
+        if st.button("← 메뉴", key="e1_back"):
+            go("menu")
+    with col3:
+        if st.button("저장하기 ✓", type="primary", use_container_width=True, key="e1_save"):
+            if not final.strip():
+                st.warning("최종 답안을 작성해 주세요.")
+            else:
+                log_to_sheet(
+                    st.session_state.student_id, st.session_state.student_name,
+                    "탐구① 효과적 표현 방법 (최종 답안)", final
+                )
+                st.success("최종 답안이 저장되었습니다! 메뉴로 돌아가 다음 활동을 선택하세요.")
+
+# ══════════════════════════════════════════════════════════════
+# PAGE: EXPLORE 2 · 진솔하게 글을 쓰는 방법 탐구하기
+# ══════════════════════════════════════════════════════════════
+elif st.session_state.page == "explore2":
+    student_bar()
+    explore_label("진솔하게 글을 쓰는 방법 탐구하기")
+    st.caption("나의 감정을 꾸밈없이 솔직하게 표현하는 방법을 탐구해 봅시다.")
+
+    st.markdown(
+        '<div class="tip-box">💡 진솔한 글이란 겉으로 보기 좋은 말이 아니라, '
+        '<b>실제로 내가 느낀 감정</b>을 가장 가깝게 표현한 글입니다. '
+        '남들이 이해할 수 없더라도, 내가 느낀 그대로를 표현해 보세요.</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
+    # ── 핵심 개념 안내 ────────────────────────────────────
+    st.markdown("#### 📌 진솔한 표현이란?")
+    st.markdown("""
+다음 두 표현 중 더 진솔한 표현은 어느 쪽일까요?
+
+| 일반적인 표현 | 진솔한 표현 |
+|---|---|
+| "기분이 좋았다." | "가슴이 두근거렸고, 괜히 눈물이 날 것 같았다." |
+| "무서웠다." | "발이 땅에 붙어버린 것처럼 한 발짝도 움직일 수 없었다." |
+| "미안했다." | "눈을 어디에 두어야 할지 몰라서 자꾸 바닥만 보았다." |
+
+**진솔한 표현의 특징:** 막연한 감정어 대신, **그 순간의 몸의 반응·행동·생각**을 구체적으로 담습니다.
+""")
+
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
+    # ── 학생 입력 ─────────────────────────────────────────
+    st.markdown("#### ✏️ 나의 경험으로 탐구해 봅시다.")
+
+    experience = st.text_area(
+        "① 떠올린 경험 (어떤 상황이었나요?)",
+        value=st.session_state.explore2_experience,
+        placeholder="예) 발표를 앞두고 친구들 앞에 서야 했던 순간",
+        height=80,
+        key="e2_exp"
+    )
+
+    emotion = st.text_area(
+        "② 그때 느낀 감정을 한 단어로 표현하면?",
+        value=st.session_state.explore2_emotion,
+        placeholder="예) 긴장됐다, 무서웠다, 부끄러웠다 등",
+        height=60,
+        key="e2_emo"
+    )
+
+    honest = st.text_area(
+        "③ 그 감정을 더 진솔하게 표현해 보세요. (몸의 반응, 행동, 머릿속 생각 등을 활용해 보세요.)",
+        value=st.session_state.explore2_honest,
+        placeholder="예) 심장이 귀 안에서 울리는 것 같았고, 입 안이 바짝 말랐다. 빨리 투명인간이 되고 싶었다.",
+        height=110,
+        key="e2_honest"
+    )
+
+    st.session_state.explore2_experience = experience
+    st.session_state.explore2_emotion    = emotion
+    st.session_state.explore2_honest     = honest
+
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
+    # ── AI 피드백 ─────────────────────────────────────────
+    st.markdown("#### 🤖 AI 피드백 받기")
+    st.markdown(
+        '<div class="tip-box">💡 세 항목을 모두 입력한 뒤 AI 피드백을 받아 보세요.</div>',
+        unsafe_allow_html=True
+    )
+
+    all_filled2 = experience.strip() and emotion.strip() and honest.strip()
+    if not all_filled2:
+        st.caption("⬆️ 세 항목을 모두 입력해야 AI 피드백을 받을 수 있습니다.")
+
+    api_badge()
+    if st.button("🤖 AI 피드백 받기", type="primary", disabled=not all_filled2, key="e2_ai_btn"):
+        with st.spinner("AI가 여러분의 표현을 분석하고 있습니다..."):
+            prompt = f"""당신은 중학교 1학년 국어를 지도하는 교사입니다.
+학생이 자신의 경험에서 나온 감정을 진솔하게 표현하려는 활동을 진행하고 있습니다.
+
+[학생 입력]
+- 경험한 상황: {experience}
+- 느낀 감정 (한 단어): {emotion}
+- 진솔한 표현 시도: {honest}
+
+[피드백 지침]
+반드시 '--습니다'체를 사용하고 아래 두 파트로만 구성하십시오.
+정답을 직접 제공하지 말고, 학생이 스스로 표현을 발전시키도록 안내하십시오.
+
+**[진솔한 표현 평가]**
+- 학생의 표현이 막연한 감정어를 넘어 구체적인 몸의 반응·행동·내면의 생각을 담고 있는지 평가하십시오.
+- 특히 생생하게 느껴지는 부분이 있다면 구체적으로 언급하십시오.
+- 아직 막연하거나 추상적인 부분이 있다면 어느 부분인지 지적하십시오.
+- 표현이 경험한 상황과 잘 연결되어 있는지 평가하십시오.
+
+**[표현을 더 발전시키는 질문]**
+- 학생이 자신의 표현을 스스로 심화할 수 있도록 구체적인 질문 2개를 제시하십시오.
+- 예를 들어 "그 순간 손이나 발은 어떤 상태였나요?", "머릿속에 어떤 생각이 가장 먼저 떠올랐나요?" 등 감각·행동·생각을 더 구체화하도록 유도하십시오.
+- 수정된 문장을 직접 제공하지 마십시오."""
+
+            fb, key_used, key_total = ai_call(prompt)
+            st.session_state.explore2_fb = fb
+            st.session_state.api_used = (key_used, key_total)
+
+            content = (
+                f"[경험한 상황]\n{experience}\n\n"
+                f"[느낀 감정]\n{emotion}\n\n"
+                f"[진솔한 표현 시도]\n{honest}"
+            )
+            log_to_sheet(
+                st.session_state.student_id, st.session_state.student_name,
+                "탐구② 진솔하게 글 쓰는 방법", content, fb
+            )
+
+    api_badge()
+    if st.session_state.explore2_fb:
+        st.markdown(
+            f'<div class="ai-box">🤖 <b>AI 피드백</b><br><br>'
+            f'{st.session_state.explore2_fb.replace(chr(10), "<br>")}</div>',
+            unsafe_allow_html=True
+        )
+
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
+    # ── 최종 정리 ─────────────────────────────────────────
+    st.markdown("#### 📝 표현 발전시키기")
+    st.markdown(
+        '<div class="tip-box">💡 AI 피드백을 참고하여 나의 표현을 더욱 발전시켜 보세요. '
+        '글쓰기 단계에서 이 표현을 활용할 수 있습니다.</div>',
+        unsafe_allow_html=True
+    )
+
+    final2 = st.text_area(
+        "발전시킨 진솔한 표현",
+        value=st.session_state.explore2_final,
+        placeholder="AI 피드백을 반영하여 더 구체적이고 진솔하게 발전시킨 표현을 써 보세요.",
+        height=130,
+        key="e2_final"
+    )
+    st.session_state.explore2_final = final2
+
+    col1, col2, col3 = st.columns([1, 3, 1])
+    with col1:
+        if st.button("← 메뉴", key="e2_back"):
+            go("menu")
+    with col3:
+        if st.button("저장하기 ✓", type="primary", use_container_width=True, key="e2_save"):
+            if not final2.strip():
+                st.warning("발전시킨 표현을 작성해 주세요.")
+            else:
+                log_to_sheet(
+                    st.session_state.student_id, st.session_state.student_name,
+                    "탐구② 진솔하게 글 쓰는 방법 (최종 표현)", final2
+                )
+                st.success("저장되었습니다! 메뉴로 돌아가 다음 활동을 선택하세요.")
 
 # ══════════════════════════════════════════════════════════════
 # PAGE: STEP 1 · 계획하기
@@ -676,7 +1021,6 @@ elif st.session_state.page == "step5":
     # ── AI 피드백 ─────────────────────────────────────────
     st.markdown("#### 🤖 AI 표현 방법 점검")
 
-    # 세 가지 표현 방법 모두 최소 입력 여부 확인
     expr_filled = (
         bool(expr_inputs.get("운율", "").strip()) and
         bool(expr_inputs.get("비유_문장", "").strip()) and
