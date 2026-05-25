@@ -37,47 +37,53 @@ st.markdown("""
     margin-bottom: 12px;
   }
   .tip-box {
-    background: #FFFDE7; border-left: 4px solid #F9A825;
+    background: #FFFDE7 !important; border-left: 4px solid #F9A825;
     padding: 10px 14px; border-radius: 4px;
     font-size: 0.92rem; margin-bottom: 10px;
+    color: #33290A !important;
   }
   .ai-box {
-    background: #E8F5E9; border-left: 4px solid #2E7D32;
+    background: #E8F5E9 !important; border-left: 4px solid #2E7D32;
     padding: 12px 16px; border-radius: 4px;
     font-size: 0.95rem; margin-top: 12px;
+    color: #1B3A1F !important;
   }
   .api-badge {
-    background: #E3F2FD; border: 1px solid #90CAF9;
+    background: #E3F2FD !important; border: 1px solid #90CAF9;
     padding: 4px 10px; border-radius: 12px;
-    font-size: 0.80rem; color: #1565C0;
+    font-size: 0.80rem; color: #1565C0 !important;
     display: inline-block; margin-bottom: 8px;
   }
   .restore-box {
-    background: #E8F5E9; border-left: 4px solid #2E7D32;
+    background: #E8F5E9 !important; border-left: 4px solid #2E7D32;
     padding: 10px 14px; border-radius: 4px;
     font-size: 0.92rem; margin-bottom: 10px;
+    color: #1B3A1F !important;
   }
   .compare-box-a {
-    background: #FFF3E0; border-left: 4px solid #FF6D00;
+    background: #FFF3E0 !important; border-left: 4px solid #FF6D00;
     padding: 12px 16px; border-radius: 4px;
     font-size: 1.0rem; margin-bottom: 8px;
+    color: #3E1F00 !important;
   }
   .compare-box-b {
-    background: #E8F5E9; border-left: 4px solid #2E7D32;
+    background: #E8F5E9 !important; border-left: 4px solid #2E7D32;
     padding: 12px 16px; border-radius: 4px;
     font-size: 1.0rem; margin-bottom: 8px;
+    color: #1B3A1F !important;
   }
   .final-box {
-    background: #EDE7F6; border-left: 4px solid #4527A0;
+    background: #EDE7F6 !important; border-left: 4px solid #4527A0;
     padding: 12px 16px; border-radius: 4px;
     font-size: 0.95rem; margin-top: 12px;
+    color: #1A0D40 !important;
   }
   .section-divider {
     border: none; border-top: 2px dashed #BDBDBD;
     margin: 20px 0;
   }
   .menu-section-label {
-    color: #757575; font-size: 0.85rem; font-weight: 600;
+    color: #555555 !important; font-size: 0.85rem; font-weight: 600;
     letter-spacing: 0.05em; margin-top: 14px; margin-bottom: 4px;
   }
 </style>
@@ -412,7 +418,7 @@ elif st.session_state.page == "explore1":
     group = st.text_area(
         "모둠 최종 답안",
         value=st.session_state.explore1_group,
-        placeholder="예) A는 '가벼워졌다'고 감정을 직접 말했지만, B는 '엘리베이터를 타고 오르듯'이라는 비유와 '다리는 묵직했지만'이라는 대조를 함께 사용하여 독자가 감정을 생생하게 느낄 수 있도록 표현했다.",
+        placeholder="",
         height=140,
         key="e1_group"
     )
@@ -463,8 +469,10 @@ B: 두 다리는 묵직했지만 마음은 엘리베이터를 타고 오르듯 �
 피드백을 모두 작성한 뒤, 반드시 아래 형식의 섹션을 추가하십시오.
 
 **[📋 학습지 정리용 요약]**
-위 피드백의 핵심 내용을 학생이 학습지에 받아 적기 쉽도록 개조식(•)으로 3~5줄 이내로 요약하십시오.
-각 항목은 짧고 명확한 한 문장으로 작성하십시오."""
+위 피드백에서 학생이 수정해야 할 핵심 사항 2가지만 개조식(•)으로 제시하십시오.
+각 항목은 "~하면 더 좋은 답이 될 것 같습니다."처럼 구체적으로 무엇을 어떻게 고쳐야 하는지 알 수 있게 작성하십시오.
+'비유', '대조', '표현 방식' 같은 개념어를 항목 제목으로 쓰지 마십시오.
+학생이 바로 실행할 수 있는 행동 중심 문장으로 작성하십시오."""
 
             fb, key_used, key_total = ai_call(prompt)
             st.session_state.explore1_fb = fb
@@ -612,8 +620,10 @@ elif st.session_state.page == "explore2":
 피드백을 모두 작성한 뒤, 반드시 아래 형식의 섹션을 추가하십시오.
 
 **[📋 학습지 정리용 요약]**
-위 피드백의 핵심 내용을 학생이 학습지에 받아 적기 쉽도록 개조식(•)으로 3~5줄 이내로 요약하십시오.
-각 항목은 짧고 명확한 한 문장으로 작성하십시오."""
+위 피드백에서 학생이 표현을 발전시키기 위해 실천해야 할 핵심 사항 2가지만 개조식(•)으로 제시하십시오.
+각 항목은 "~하면 더 좋은 표현이 될 것 같습니다."처럼 구체적으로 무엇을 어떻게 추가하거나 고쳐야 하는지 알 수 있게 작성하십시오.
+'진솔성', '구체성' 같은 개념어를 항목 제목으로 쓰지 마십시오.
+학생이 바로 실행할 수 있는 행동 중심 문장으로 작성하십시오."""
 
             fb, key_used, key_total = ai_call(prompt)
             st.session_state.explore2_fb = fb
