@@ -86,6 +86,14 @@ st.markdown("""
     color: #555555 !important; font-size: 0.85rem; font-weight: 600;
     letter-spacing: 0.05em; margin-top: 14px; margin-bottom: 4px;
   }
+  /* 버튼 텍스트 줄바꿈 방지 */
+  .stButton > button {
+    white-space: nowrap !important;
+  }
+  .stButton > button p {
+    white-space: nowrap !important;
+    margin: 0 !important;
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -825,7 +833,7 @@ elif st.session_state.page == "step3":
                     f'{st.session_state.structure_fb.replace(chr(10), "<br>")}</div>',
                     unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 3, 1])
+    col1, col2, col3 = st.columns([1, 2, 2])
     with col1:
         if st.button("← 메뉴"):
             st.session_state.structure = structure
@@ -866,7 +874,7 @@ elif st.session_state.page == "step4":
                 '작성이 완료되면 아래 버튼을 눌러 다음 단계로 넘어가세요.</div>',
                 unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 3, 1])
+    col1, col2, col3 = st.columns([1, 2, 2])
     with col1:
         if st.button("← 메뉴"):
             go("menu")
@@ -885,12 +893,6 @@ elif st.session_state.page == "step5":
     st.caption("초고에서 활용한 표현 방법을 점검하고, AI 피드백을 받아 봅시다.")
 
     plan = st.session_state.plan
-
-    with st.expander("📄 내 초고 보기", expanded=False):
-        st.markdown(f"**{plan.get('title', '')}**")
-        st.write(st.session_state.draft)
-
-    st.divider()
 
     # ── 표현 방법별 입력 (운율·비유·상징 항상 표시) ───────────
     st.markdown("#### ✏️ 활용한 표현 방법 입력")
@@ -1080,7 +1082,7 @@ elif st.session_state.page == "step5":
 
     st.divider()
 
-    col1, col2, col3 = st.columns([1, 3, 1])
+    col1, col2, col3 = st.columns([1, 2, 2])
     with col1:
         if st.button("← 메뉴"):
             go("menu")
