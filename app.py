@@ -833,7 +833,7 @@ elif st.session_state.page == "step3":
                     f'{st.session_state.structure_fb.replace(chr(10), "<br>")}</div>',
                     unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 2, 2])
+    col1, col2, col3 = st.columns([2, 1, 2])
     with col1:
         if st.button("← 메뉴"):
             st.session_state.structure = structure
@@ -874,7 +874,7 @@ elif st.session_state.page == "step4":
                 '작성이 완료되면 아래 버튼을 눌러 다음 단계로 넘어가세요.</div>',
                 unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 2, 2])
+    col1, col2, col3 = st.columns([2, 1, 2])
     with col1:
         if st.button("← 메뉴"):
             go("menu")
@@ -1082,7 +1082,7 @@ elif st.session_state.page == "step5":
 
     st.divider()
 
-    col1, col2, col3 = st.columns([1, 2, 2])
+    col1, col2, col3 = st.columns([2, 1, 2])
     with col1:
         if st.button("← 메뉴"):
             go("menu")
