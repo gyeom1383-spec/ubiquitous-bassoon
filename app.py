@@ -379,7 +379,7 @@ elif st.session_state.page == "menu":
         go("explore2")
 
     # ── 글쓰기 단계 ────────────────────────────────────────
-    st.markdown('<div class="menu-section-label">✏️ 글쓰기 단계</div>', unsafe_allow_width=True)
+    st.markdown('<div class="menu-section-label">✏️ 글쓰기 단계</div>', unsafe_allow_html=True)
     st.caption("순서대로 진행해 보세요.")
 
     steps = [
