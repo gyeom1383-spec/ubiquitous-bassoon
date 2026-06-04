@@ -2,7 +2,7 @@ import streamlit as st
 import json
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from openai import OpenAI
 
 # ── 페이지 설정 ─────────────────────────────────────────────
@@ -97,6 +97,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ── 한국 시간(KST) 헬퍼 ─────────────────────────────────────
+KST = timezone(timedelta(hours=9))
+
+def now_kst() -> str:
+    """현재 한국 시간(KST, UTC+9)을 'YYYY-MM-DD HH:MM:SS' 형식으로 반환합니다."""
+    return datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
+
 # ── Gemini API 키 자동 전환 ──────────────────────────────────
 def get_api_keys():
     if "GEMINI_API_KEYS" in st.secrets:
@@ -175,7 +182,7 @@ def log_to_sheet(student_id, name, step_name, content, feedback=""):
                 time.sleep(0.3)
             sheet.append_row([
                 str(student_id), name, step_name, content, feedback,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                now_kst(),  # ← KST 시간 사용 (기존 datetime.now() 대체)
             ])
             return
         except Exception as e:
@@ -265,17 +272,17 @@ defaults = {
     "api_used": None,
     "restored": False,
     # ── 탐구①: 효과적으로 표현하는 방법 ──
-    "explore1_diff": "",       # A와 B가 다른 부분
-    "explore1_reason": "",     # B처럼 표현한 이유
-    "explore1_group": "",      # 모둠 답안
-    "explore1_fb": "",         # AI 피드백
-    "explore1_final": "",      # 최종 답안
+    "explore1_diff": "",
+    "explore1_reason": "",
+    "explore1_group": "",
+    "explore1_fb": "",
+    "explore1_final": "",
     # ── 탐구②: 진솔하게 글을 쓰는 방법 ──
-    "explore2_experience": "", # 떠올린 경험
-    "explore2_emotion": "",    # 당시 감정
-    "explore2_honest": "",     # 진솔한 표현 시도
-    "explore2_fb": "",         # AI 피드백
-    "explore2_final": "",      # 최종 정리
+    "explore2_experience": "",
+    "explore2_emotion": "",
+    "explore2_honest": "",
+    "explore2_fb": "",
+    "explore2_final": "",
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -372,7 +379,7 @@ elif st.session_state.page == "menu":
         go("explore2")
 
     # ── 글쓰기 단계 ────────────────────────────────────────
-    st.markdown('<div class="menu-section-label">✏️ 글쓰기 단계</div>', unsafe_allow_html=True)
+    st.markdown('<div class="menu-section-label">✏️ 글쓰기 단계</div>', unsafe_allow_width=True)
     st.caption("순서대로 진행해 보세요.")
 
     steps = [
@@ -495,21 +502,18 @@ B: 두 다리는 묵직했지만 마음은 엘리베이터를 타고 오르듯 �
     if st.session_state.explore1_fb:
         fb_text = st.session_state.explore1_fb
 
-        # 요약 섹션 분리
         summary_marker = "**[📋 학습지 정리용 요약]**"
         if summary_marker in fb_text:
             main_fb, summary_fb = fb_text.split(summary_marker, 1)
         else:
             main_fb, summary_fb = fb_text, ""
 
-        # 본문 피드백
         st.markdown(
             f'<div class="ai-box">🤖 <b>AI 피드백</b><br><br>'
             f'{main_fb.strip().replace(chr(10), "<br>")}</div>',
             unsafe_allow_html=True
         )
 
-        # 개조식 요약 박스
         if summary_fb.strip():
             st.markdown(
                 f'<div class="final-box">📋 <b>학습지 정리용 요약</b> — 아래 내용을 학습지에 옮겨 적으세요.<br><br>'
@@ -538,7 +542,6 @@ elif st.session_state.page == "explore2":
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
-    # ── 핵심 개념 안내 ────────────────────────────────────
     st.markdown("#### 📌 진솔한 표현이란?")
     st.markdown("""
 다음 두 표현 중 더 진솔한 표현은 어느 쪽일까요?
@@ -554,7 +557,6 @@ elif st.session_state.page == "explore2":
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
-    # ── 학생 입력 ─────────────────────────────────────────
     st.markdown("#### ✏️ 나의 경험으로 탐구해 봅시다.")
 
     experience = st.text_area(
@@ -587,7 +589,6 @@ elif st.session_state.page == "explore2":
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
-    # ── AI 피드백 ─────────────────────────────────────────
     st.markdown("#### 🤖 AI 피드백 받기")
     st.markdown(
         '<div class="tip-box">💡 세 항목을 모두 입력한 뒤 AI 피드백을 받아 보세요.</div>',
