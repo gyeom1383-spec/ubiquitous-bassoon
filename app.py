@@ -564,7 +564,6 @@ B: 두 다리는 묵직했지만 마음은 엘리베이터를 타고 오르듯 �
                 st.session_state.loading_e1 = False
                 st.rerun()
 
-    api_badge()
     if st.session_state.explore1_fb:
         fb_text = st.session_state.explore1_fb
 
@@ -742,7 +741,6 @@ elif st.session_state.page == "explore2":
                 st.session_state.loading_e2 = False
                 st.rerun()
 
-    api_badge()
     if st.session_state.explore2_fb:
         fb_text2 = st.session_state.explore2_fb
 
@@ -946,7 +944,6 @@ elif st.session_state.page == "step3":
                 st.session_state.loading_s3 = False
                 st.rerun()
 
-    api_badge()
     if st.session_state.structure_fb:
         st.markdown(f'<div class="ai-box">🤖 <b>AI 피드백</b><br><br>'
                     f'{st.session_state.structure_fb.replace(chr(10), "<br>")}</div>',
@@ -1216,7 +1213,6 @@ elif st.session_state.page == "step5":
                 st.session_state.loading_s5 = False
                 st.rerun()
 
-    api_badge()
     if st.session_state.revise_fb:
         st.markdown(f'<div class="ai-box">🤖 <b>AI 피드백</b><br><br>'
                     f'{st.session_state.revise_fb.replace(chr(10), "<br>")}</div>',
