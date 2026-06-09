@@ -2,7 +2,7 @@ import streamlit as st
 import json
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from openai import OpenAI
 
 # ── 페이지 설정 ─────────────────────────────────────────────
@@ -97,13 +97,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ── 한국 시간(KST) 헬퍼 ─────────────────────────────────────
-KST = timezone(timedelta(hours=9))
-
-def now_kst() -> str:
-    """현재 한국 시간(KST, UTC+9)을 'YYYY-MM-DD HH:MM:SS' 형식으로 반환합니다."""
-    return datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
-
 # ── Gemini API 키 자동 전환 ──────────────────────────────────
 def get_api_keys():
     if "GEMINI_API_KEYS" in st.secrets:
@@ -123,29 +116,69 @@ def get_api_keys():
         return [st.secrets["GEMINI_API_KEY"]]
     return keys
 
+# 학생에게 보여줄 친절한 안내 문구로 감싸기 위한 예외 클래스
+class FriendlyAIError(Exception):
+    """AI 호출 실패 시 학생에게 보여줄 안내 문구를 담는 예외."""
+    pass
+
 def ai_call(prompt: str):
+    import time
     keys = get_api_keys()
-    last_error = None
+
+    if not keys:
+        raise FriendlyAIError(
+            "AI 연결 설정에 문제가 있습니다. 선생님께 알려 주세요."
+        )
+
+    server_error_occurred = False  # 500/503 등 서버 오류가 한 번이라도 났는지
+
     for idx, key in enumerate(keys):
-        try:
-            client = OpenAI(
-                api_key=key,
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            )
-            resp = client.chat.completions.create(
-                model="gemini-2.5-flash",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=8192,
-                temperature=0.3,
-                stream=False,
-            )
-            return resp.choices[0].message.content, idx + 1, len(keys)
-        except Exception as e:
-            if "429" in str(e):
-                last_error = e
-                continue
-            raise e
-    raise Exception(f"모든 API 키의 할당량이 초과되었습니다.\n(마지막 오류: {last_error})")
+        # 같은 키로 서버 오류(500/503/overloaded) 시 최대 3회까지 재시도
+        for attempt in range(3):
+            try:
+                client = OpenAI(
+                    api_key=key,
+                    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                )
+                resp = client.chat.completions.create(
+                    model="gemini-2.5-flash",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=8192,
+                    temperature=0.3,
+                    stream=False,
+                )
+                return resp.choices[0].message.content, idx + 1, len(keys)
+            except Exception as e:
+                msg = str(e)
+                # 429(할당량 초과): 재시도하지 말고 다음 키로 전환
+                if "429" in msg:
+                    break
+                # 500/503/일시적 과부하: 잠시 기다렸다 같은 키로 재시도
+                if any(code in msg for code in ["500", "503", "502", "overloaded",
+                                                "InternalServerError", "Internal Server"]):
+                    server_error_occurred = True
+                    if attempt < 2:
+                        time.sleep(2)
+                        continue
+                    else:
+                        break  # 이 키로는 재시도 소진 → 다음 키 시도
+                # 그 밖의 오류: 더 시도하지 않고 친절한 안내로 종료
+                raise FriendlyAIError(
+                    "AI 피드백을 불러오는 중 문제가 발생했습니다.\n"
+                    "잠시 후 버튼을 한 번 더 눌러 주십시오."
+                )
+
+    # 여기까지 왔다면 모든 키가 실패한 상태
+    if server_error_occurred:
+        raise FriendlyAIError(
+            "지금 AI 서버가 혼잡하여 응답하지 못했습니다.\n"
+            "잠시 후 버튼을 한 번 더 눌러 주십시오."
+        )
+    else:
+        raise FriendlyAIError(
+            "오늘 사용할 수 있는 AI 피드백 횟수를 모두 사용했습니다.\n"
+            "잠시 후 다시 시도하거나 선생님께 알려 주세요."
+        )
 
 # ── Google Sheets 연결 ───────────────────────────────────────
 @st.cache_resource
@@ -182,7 +215,7 @@ def log_to_sheet(student_id, name, step_name, content, feedback=""):
                 time.sleep(0.3)
             sheet.append_row([
                 str(student_id), name, step_name, content, feedback,
-                now_kst(),  # ← KST 시간 사용 (기존 datetime.now() 대체)
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             ])
             return
         except Exception as e:
@@ -271,18 +304,28 @@ defaults = {
     "revise_fb": "",
     "api_used": None,
     "restored": False,
+    # ── AI 피드백 생성 중 여부 (버튼 비활성화용) ──
+    "loading_e1": False,   # 탐구①
+    "loading_e2": False,   # 탐구②
+    "loading_s3": False,   # STEP3
+    "loading_s5": False,   # STEP5
+    # ── AI 호출 실패 안내 문구 ──
+    "ai_error_e1": "",
+    "ai_error_e2": "",
+    "ai_error_s3": "",
+    "ai_error_s5": "",
     # ── 탐구①: 효과적으로 표현하는 방법 ──
-    "explore1_diff": "",
-    "explore1_reason": "",
-    "explore1_group": "",
-    "explore1_fb": "",
-    "explore1_final": "",
+    "explore1_diff": "",       # A와 B가 다른 부분
+    "explore1_reason": "",     # B처럼 표현한 이유
+    "explore1_group": "",      # 모둠 답안
+    "explore1_fb": "",         # AI 피드백
+    "explore1_final": "",      # 최종 답안
     # ── 탐구②: 진솔하게 글을 쓰는 방법 ──
-    "explore2_experience": "",
-    "explore2_emotion": "",
-    "explore2_honest": "",
-    "explore2_fb": "",
-    "explore2_final": "",
+    "explore2_experience": "", # 떠올린 경험
+    "explore2_emotion": "",    # 당시 감정
+    "explore2_honest": "",     # 진솔한 표현 시도
+    "explore2_fb": "",         # AI 피드백
+    "explore2_final": "",      # 최종 정리
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -453,7 +496,20 @@ elif st.session_state.page == "explore1":
         st.caption("⬆️ 모둠 답안을 입력해야 AI 피드백을 받을 수 있습니다.")
 
     api_badge()
-    if st.button("🤖 AI 피드백 받기", type="primary", disabled=not group.strip(), key="e1_ai_btn"):
+
+    # 오류 안내가 있으면 표시
+    if st.session_state.ai_error_e1:
+        st.warning(st.session_state.ai_error_e1)
+
+    _loading_e1 = st.session_state.loading_e1
+    _btn_label_e1 = "⏳ 피드백 생성 중..." if _loading_e1 else "🤖 AI 피드백 받기"
+    if st.button(_btn_label_e1, type="primary",
+                 disabled=(not group.strip()) or _loading_e1, key="e1_ai_btn"):
+        st.session_state.loading_e1 = True
+        st.session_state.ai_error_e1 = ""
+        st.rerun()
+
+    if st.session_state.loading_e1:
         with st.spinner("AI가 여러분의 탐구 내용을 분석하고 있습니다..."):
             prompt = f"""당신은 중학교 1학년 국어를 지도하는 교사입니다.
 학생들이 모둠 활동으로 다음 두 표현을 비교하고 탐구하였습니다.
@@ -489,31 +545,44 @@ B: 두 다리는 묵직했지만 마음은 엘리베이터를 타고 오르듯 �
 '비유', '대조', '표현 방식' 같은 개념어를 항목 제목으로 쓰지 마십시오.
 학생이 바로 실행할 수 있는 행동 중심 문장으로 작성하십시오."""
 
-            fb, key_used, key_total = ai_call(prompt)
-            st.session_state.explore1_fb = fb
-            st.session_state.api_used = (key_used, key_total)
-
-            log_to_sheet(
-                st.session_state.student_id, st.session_state.student_name,
-                "탐구① 효과적 표현 방법", f"[모둠 답안]\n{group}", fb
-            )
+            try:
+                fb, key_used, key_total = ai_call(prompt)
+                st.session_state.explore1_fb = fb
+                st.session_state.api_used = (key_used, key_total)
+                log_to_sheet(
+                    st.session_state.student_id, st.session_state.student_name,
+                    "탐구① 효과적 표현 방법", f"[모둠 답안]\n{group}", fb
+                )
+            except FriendlyAIError as e:
+                st.session_state.ai_error_e1 = str(e)
+            except Exception:
+                st.session_state.ai_error_e1 = (
+                    "AI 피드백을 불러오는 중 문제가 발생했습니다.\n"
+                    "잠시 후 버튼을 한 번 더 눌러 주십시오."
+                )
+            finally:
+                st.session_state.loading_e1 = False
+                st.rerun()
 
     api_badge()
     if st.session_state.explore1_fb:
         fb_text = st.session_state.explore1_fb
 
+        # 요약 섹션 분리
         summary_marker = "**[📋 학습지 정리용 요약]**"
         if summary_marker in fb_text:
             main_fb, summary_fb = fb_text.split(summary_marker, 1)
         else:
             main_fb, summary_fb = fb_text, ""
 
+        # 본문 피드백
         st.markdown(
             f'<div class="ai-box">🤖 <b>AI 피드백</b><br><br>'
             f'{main_fb.strip().replace(chr(10), "<br>")}</div>',
             unsafe_allow_html=True
         )
 
+        # 개조식 요약 박스
         if summary_fb.strip():
             st.markdown(
                 f'<div class="final-box">📋 <b>학습지 정리용 요약</b> — 아래 내용을 학습지에 옮겨 적으세요.<br><br>'
@@ -542,6 +611,7 @@ elif st.session_state.page == "explore2":
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
+    # ── 핵심 개념 안내 ────────────────────────────────────
     st.markdown("#### 📌 진솔한 표현이란?")
     st.markdown("""
 다음 두 표현 중 더 진솔한 표현은 어느 쪽일까요?
@@ -557,6 +627,7 @@ elif st.session_state.page == "explore2":
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
+    # ── 학생 입력 ─────────────────────────────────────────
     st.markdown("#### ✏️ 나의 경험으로 탐구해 봅시다.")
 
     experience = st.text_area(
@@ -589,6 +660,7 @@ elif st.session_state.page == "explore2":
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
+    # ── AI 피드백 ─────────────────────────────────────────
     st.markdown("#### 🤖 AI 피드백 받기")
     st.markdown(
         '<div class="tip-box">💡 세 항목을 모두 입력한 뒤 AI 피드백을 받아 보세요.</div>',
@@ -600,7 +672,19 @@ elif st.session_state.page == "explore2":
         st.caption("⬆️ 세 항목을 모두 입력해야 AI 피드백을 받을 수 있습니다.")
 
     api_badge()
-    if st.button("🤖 AI 피드백 받기", type="primary", disabled=not all_filled2, key="e2_ai_btn"):
+
+    if st.session_state.ai_error_e2:
+        st.warning(st.session_state.ai_error_e2)
+
+    _loading_e2 = st.session_state.loading_e2
+    _btn_label_e2 = "⏳ 피드백 생성 중..." if _loading_e2 else "🤖 AI 피드백 받기"
+    if st.button(_btn_label_e2, type="primary",
+                 disabled=(not all_filled2) or _loading_e2, key="e2_ai_btn"):
+        st.session_state.loading_e2 = True
+        st.session_state.ai_error_e2 = ""
+        st.rerun()
+
+    if st.session_state.loading_e2:
         with st.spinner("AI가 여러분의 표현을 분석하고 있습니다..."):
             prompt = f"""당신은 중학교 1학년 국어를 지도하는 교사입니다.
 학생이 자신의 경험에서 나온 감정을 진솔하게 표현하려는 활동을 진행하고 있습니다.
@@ -634,19 +718,29 @@ elif st.session_state.page == "explore2":
 '진솔성', '구체성' 같은 개념어를 항목 제목으로 쓰지 마십시오.
 학생이 바로 실행할 수 있는 행동 중심 문장으로 작성하십시오."""
 
-            fb, key_used, key_total = ai_call(prompt)
-            st.session_state.explore2_fb = fb
-            st.session_state.api_used = (key_used, key_total)
-
-            content = (
-                f"[경험한 상황]\n{experience}\n\n"
-                f"[느낀 감정]\n{emotion}\n\n"
-                f"[진솔한 표현 시도]\n{honest}"
-            )
-            log_to_sheet(
-                st.session_state.student_id, st.session_state.student_name,
-                "탐구② 진솔하게 글 쓰는 방법", content, fb
-            )
+            try:
+                fb, key_used, key_total = ai_call(prompt)
+                st.session_state.explore2_fb = fb
+                st.session_state.api_used = (key_used, key_total)
+                content = (
+                    f"[경험한 상황]\n{experience}\n\n"
+                    f"[느낀 감정]\n{emotion}\n\n"
+                    f"[진솔한 표현 시도]\n{honest}"
+                )
+                log_to_sheet(
+                    st.session_state.student_id, st.session_state.student_name,
+                    "탐구② 진솔하게 글 쓰는 방법", content, fb
+                )
+            except FriendlyAIError as e:
+                st.session_state.ai_error_e2 = str(e)
+            except Exception:
+                st.session_state.ai_error_e2 = (
+                    "AI 피드백을 불러오는 중 문제가 발생했습니다.\n"
+                    "잠시 후 버튼을 한 번 더 눌러 주십시오."
+                )
+            finally:
+                st.session_state.loading_e2 = False
+                st.rerun()
 
     api_badge()
     if st.session_state.explore2_fb:
@@ -792,7 +886,20 @@ elif st.session_state.page == "step3":
     all_filled = all(p_.strip() for p_ in paras)
 
     api_badge()
-    if st.button("🤖 AI 피드백 받기", type="primary", disabled=not all_filled):
+
+    if st.session_state.ai_error_s3:
+        st.warning(st.session_state.ai_error_s3)
+
+    _loading_s3 = st.session_state.loading_s3
+    _btn_label_s3 = "⏳ 피드백 생성 중..." if _loading_s3 else "🤖 AI 피드백 받기"
+    if st.button(_btn_label_s3, type="primary",
+                 disabled=(not all_filled) or _loading_s3, key="s3_ai_btn"):
+        st.session_state.loading_s3 = True
+        st.session_state.ai_error_s3 = ""
+        st.session_state.structure = structure  # 입력 보존
+        st.rerun()
+
+    if st.session_state.loading_s3:
         with st.spinner("AI가 구성을 분석하고 있습니다..."):
             plan = st.session_state.plan
             prompt = f"""당신은 중학교 1학년 국어 글쓰기를 지도하는 교사입니다.
@@ -822,11 +929,22 @@ elif st.session_state.page == "step3":
 - 단순한 "잘 되었나요?" 형태가 아닌, 무엇을 어떻게 고쳐야 할지 생각하게 만드는 질문이어야 합니다.
 - 답을 직접 알려주지 말고, 스스로 생각하게 열어두십시오."""
 
-            fb, key_used, key_total = ai_call(prompt)
-            st.session_state.structure_fb = fb
-            st.session_state.api_used = (key_used, key_total)
-            log_to_sheet(st.session_state.student_id, st.session_state.student_name,
-                         "③ 내용 조직하기", structure, fb)
+            try:
+                fb, key_used, key_total = ai_call(prompt)
+                st.session_state.structure_fb = fb
+                st.session_state.api_used = (key_used, key_total)
+                log_to_sheet(st.session_state.student_id, st.session_state.student_name,
+                             "③ 내용 조직하기", st.session_state.structure, fb)
+            except FriendlyAIError as e:
+                st.session_state.ai_error_s3 = str(e)
+            except Exception:
+                st.session_state.ai_error_s3 = (
+                    "AI 피드백을 불러오는 중 문제가 발생했습니다.\n"
+                    "잠시 후 버튼을 한 번 더 눌러 주십시오."
+                )
+            finally:
+                st.session_state.loading_s3 = False
+                st.rerun()
 
     api_badge()
     if st.session_state.structure_fb:
@@ -1009,7 +1127,19 @@ elif st.session_state.page == "step5":
         st.caption("⬆️ 운율·비유·상징 입력을 모두 완료해야 AI 피드백을 받을 수 있습니다.")
 
     api_badge()
-    if st.button("AI 피드백 받기", type="primary", disabled=not expr_filled):
+
+    if st.session_state.ai_error_s5:
+        st.warning(st.session_state.ai_error_s5)
+
+    _loading_s5 = st.session_state.loading_s5
+    _btn_label_s5 = "⏳ 피드백 생성 중..." if _loading_s5 else "AI 피드백 받기"
+    if st.button(_btn_label_s5, type="primary",
+                 disabled=(not expr_filled) or _loading_s5, key="s5_ai_btn"):
+        st.session_state.loading_s5 = True
+        st.session_state.ai_error_s5 = ""
+        st.rerun()
+
+    if st.session_state.loading_s5:
         with st.spinner("AI가 표현 방법을 분석하고 있습니다..."):
 
             expr_text = (
@@ -1061,19 +1191,30 @@ elif st.session_state.page == "step5":
 - 수정된 문장을 직접 제공하지 마십시오.
 - 표현 방법이 모두 적절하게 사용된 경우, 더 발전시킬 수 있는 방향을 질문으로 제시하십시오."""
 
-            fb, key_used, key_total = ai_call(prompt)
-            st.session_state.revise_fb = fb
-            st.session_state.api_used = (key_used, key_total)
+            try:
+                fb, key_used, key_total = ai_call(prompt)
+                st.session_state.revise_fb = fb
+                st.session_state.api_used = (key_used, key_total)
 
-            checked_items = [label for key, label in checks.items() if check_results[key]]
-            content = (
-                f"[자기 점검 완료 항목]\n" +
-                "\n".join(f"✓ {c}" for c in checked_items) +
-                f"\n\n[표현 방법 입력]\n{expr_text}" +
-                f"\n\n[초고]\n제목: {plan.get('title','')}\n{st.session_state.draft}"
-            )
-            log_to_sheet(st.session_state.student_id, st.session_state.student_name,
-                         "⑤ 고쳐쓰기", content, fb)
+                checked_items = [label for key, label in checks.items() if check_results[key]]
+                content = (
+                    f"[자기 점검 완료 항목]\n" +
+                    "\n".join(f"✓ {c}" for c in checked_items) +
+                    f"\n\n[표현 방법 입력]\n{expr_text}" +
+                    f"\n\n[초고]\n제목: {plan.get('title','')}\n{st.session_state.draft}"
+                )
+                log_to_sheet(st.session_state.student_id, st.session_state.student_name,
+                             "⑤ 고쳐쓰기", content, fb)
+            except FriendlyAIError as e:
+                st.session_state.ai_error_s5 = str(e)
+            except Exception:
+                st.session_state.ai_error_s5 = (
+                    "AI 피드백을 불러오는 중 문제가 발생했습니다.\n"
+                    "잠시 후 버튼을 한 번 더 눌러 주십시오."
+                )
+            finally:
+                st.session_state.loading_s5 = False
+                st.rerun()
 
     api_badge()
     if st.session_state.revise_fb:
