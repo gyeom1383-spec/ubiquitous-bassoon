@@ -1115,13 +1115,13 @@ elif st.session_state.page == "step5":
     st.markdown("#### 🤖 AI 표현 방법 점검")
 
     expr_filled = (
-        bool(expr_inputs.get("운율", "").strip()) and
-        bool(expr_inputs.get("비유_문장", "").strip()) and
+        bool(expr_inputs.get("운율", "").strip()) or
+        bool(expr_inputs.get("비유_문장", "").strip()) or
         bool(expr_inputs.get("상징_문장", "").strip())
     )
 
     if not expr_filled:
-        st.caption("⬆️ 운율·비유·상징 입력을 모두 완료해야 AI 피드백을 받을 수 있습니다.")
+        st.caption("⬆️ 운율·비유·상징 중 하나 이상 입력해야 AI 피드백을 받을 수 있습니다.")
 
     api_badge()
 
