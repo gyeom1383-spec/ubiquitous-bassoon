@@ -1139,6 +1139,16 @@ elif st.session_state.page == "step5":
     if st.session_state.loading_s5:
         with st.spinner("AI가 표현 방법을 분석하고 있습니다..."):
 
+            # 입력된 항목만 골라 프롬프트에 포함
+            entered_methods = []
+            if expr_inputs.get("운율", "").strip():
+                entered_methods.append("운율")
+            if expr_inputs.get("비유_문장", "").strip():
+                entered_methods.append("비유")
+            if expr_inputs.get("상징_문장", "").strip():
+                entered_methods.append("상징")
+            entered_methods_str = "·".join(entered_methods)
+
             expr_text = (
                 f"[운율] 학생이 찾은 부분: {expr_inputs.get('운율','(미입력)')}\n\n"
                 f"[비유] 사용 문장: {expr_inputs.get('비유_문장','(미입력)')}\n"
@@ -1154,7 +1164,7 @@ elif st.session_state.page == "step5":
                                  else f"미체크 항목: {', '.join(unchecked)}")
 
             prompt = f"""당신은 중학교 1학년 국어 글쓰기를 지도하는 교사입니다.
-학생이 초고에서 활용한 표현 방법(운율·비유·상징)을 점검하고 피드백을 제공하십시오.
+학생이 초고에서 활용한 표현 방법을 점검하고 피드백을 제공하십시오.
 반드시 '--습니다'체를 사용하고, 친절하지만 객관적이고 단호하게 서술하십시오.
 정답을 직접 제공하지 말고, 학습자가 스스로 생각하고 수정할 수 있도록 비계를 제공하십시오.
 
@@ -1168,6 +1178,8 @@ elif st.session_state.page == "step5":
 {st.session_state.draft}
 
 [학생이 입력한 표현 방법 활용 내용]
+※ 학생이 입력한 항목: {entered_methods_str}
+※ 입력하지 않은 항목은 아래 피드백에서 절대 언급하지 마십시오.
 {expr_text}
 
 [자기 점검 결과]
@@ -1177,17 +1189,18 @@ elif st.session_state.page == "step5":
 반드시 아래 두 파트로만 구성하십시오.
 
 **[표현 방법 평가]**
-운율, 비유, 상징 각각에 대해 아래를 평가하십시오.
+반드시 학생이 입력한 항목({entered_methods_str})에 대해서만 평가하십시오.
+입력하지 않은 표현 방법은 절대 언급하거나 평가하지 마십시오.
 - 학생이 찾은 원관념과 보조 관념이 개념 정의에 부합하는지 판단하십시오.
 - 부합하지 않는다면 어떤 점이 잘못되었는지 구체적으로 지적하십시오.
 - 초고에서 해당 표현 방법이 실제로 효과적으로 기능하는지 평가하십시오.
-- 표현 방법이 초고에 전혀 나타나지 않는 경우 명확히 지적하십시오.
 
 **[고쳐쓰기 미션]**
+입력된 항목({entered_methods_str})에 대해서만 질문을 제시하십시오.
+입력하지 않은 항목에 대한 질문은 절대 포함하지 마십시오.
 - 학생이 스스로 수정 방향을 찾을 수 있도록 구체적인 질문 형태로 안내하십시오.
 - 수정된 문장을 직접 제공하지 마십시오.
-- 표현 방법이 모두 적절하게 사용된 경우, 더 발전시킬 수 있는 방향을 질문으로 제시하십시오."""
-
+- 표현 방법이 적절하게 사용된 경우, 더 발전시킬 수 있는 방향을 질문으로 제시하십시오."""
             try:
                 fb, key_used, key_total = ai_call(prompt)
                 st.session_state.revise_fb = fb
